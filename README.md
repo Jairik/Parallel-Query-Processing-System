@@ -11,7 +11,7 @@ This project implements a simplified database query processing engine using **C*
 * **`QPEMPI.c`** — Parallel version using **MPI**.
 * **`Proj2.pdf`** — Documentation and runtime analysis.
 * **`db.txt`** — Sample generated dataset.
-* **`sql.txt`** — Sample SQL-like queries.
+* **`sample-queries.txt`** — Sample SQL-like queries.
 
 ## Compilation & Execution
 
