@@ -4,6 +4,10 @@
 
 This project implements a simplified database query processing engine using **C** with serial and parallel (OpenMP and MPI) versions. The system queries a large dataset (`db.txt`) representing a **TODO**, supporting SQL-like queries for selection and filtering.
 
+## Plans/Notes
+
+- We should use LSM Tree + Secondary Indexes for our data structure (great use case for storing logs, used by other technologies like Kafka Logs and Cassandra).
+
 ## Expected Components
 
 * **`QPESeq.c`** — Serial query processing engine.
