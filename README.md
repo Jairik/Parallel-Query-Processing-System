@@ -46,4 +46,3 @@ See **Proj2.pdf** for:
 -->
 ---
 
-Would you like me to extend this into a slightly longer README (e.g., with explanations for parallelization strategy or structure design)?
