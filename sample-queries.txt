@@ -1,1 +1,5 @@
-# SAMPLE SQL QUERIES
+-- SAMPLE SQL QUERIES
+-- Sample 1:
+SELECT command_id, base_command, sudo_used, user_name
+FROM Commands
+WHERE sudo_used = 'True' AND user_name = "aczerwinski1" -- Can change username to test on own computer
