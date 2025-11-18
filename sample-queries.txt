@@ -1,5 +1,23 @@
 -- SAMPLE SQL QUERIES
 -- Sample 1:
-SELECT command_id, base_command, sudo_used, user_name
+SELECT command_id, base_command, sudo_used, user_name, timestamp
 FROM Commands
 WHERE sudo_used = TRUE AND user_name = "aczerwinski1"; -- Can change username to test on own computer
+
+-- Sample 2:
+SELECT command_id, raw_command, user_name, risk_level, timestamp
+FROM Commands
+WHERE sudo_used = TRUE AND risk_level > 2
+ORDER BY risk_level ASC;
+
+-- Sample 3:
+SELECT raw_command, exit_code, timestamp, sudo_used, user_name, risk_level
+FROM Commands
+WHERE risk_level > 3
+ORDER BY timestamp DESC;
+
+-- Sample 4:
+SELECT *
+FROM Commands
+WHERE risk_level = 5
+ORDER BY timestamp DESC;
