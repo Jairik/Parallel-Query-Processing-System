@@ -2,12 +2,16 @@
 
 ## Overview
 
-This project implements a simplified database query processing engine using **C** with serial and parallel (OpenMP and MPI) versions. The system queries a large dataset (`db.txt`) representing a **TODO**, supporting SQL-like queries for selection and filtering.
+This project implements a parallel query-processing engine designed to run SQL-like queries over large, structured datasets using high-performance computing techniques. The goal is to build a lightweight, command-line database system that supports fast data ingestion, indexing, and query execution using a combination of:
 
-## Plans/Notes
+- LSM-Tree based storage
+- Secondary indexes
+- Serial, OpenMP, and MPI execution modes
+- Parallel query evaluation and parallel data scanning
 
-- We should use LSM Tree + Secondary Indexes for our data structure (great use case for storing logs, used by other technologies like Kafka Logs and Cassandra).
+The system provides a full pipeline—from data generation to query parsing to parallel execution—making it useful for system administrators who need a fast, embeddable tool for scanning large logs or structured records.
 
+<!-- Should modify this later
 ## Expected Components
 
 * **`QPESeq.c`** — Serial query processing engine.
@@ -17,6 +21,7 @@ This project implements a simplified database query processing engine using **C*
 * **`db.txt`** — Sample generated dataset.
 * **`sample-queries.txt`** — Sample SQL-like queries.
 
+-->
 ## Compilation & Execution
 
 ```bash
