@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import csv
 import sys
-import uuid
+
 import random
 import math
 from dataclasses import dataclass
@@ -755,13 +755,13 @@ def generate_rows(num_rows):
     users = generate_users(num_rows)
     user_weights = [u.activity_weight for u in users]
 
-    for _ in range(num_rows):
+    for i in range(num_rows):
         user = random.choices(users, weights=user_weights, k=1)[0]
         tmpl = choose_command_template_for_user(user)
         raw_command, sudo_used = build_raw_command(user, tmpl)
 
         yield {
-            "command_id": str(uuid.uuid4()),
+            "command_id": i,
             "raw_command": raw_command,
             "base_command": tmpl.base_command,
             "shell_type": user.shell_type,

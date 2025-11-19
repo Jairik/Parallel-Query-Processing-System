@@ -4,7 +4,7 @@
 
 | Name | Type | Description |
 |---|---|---|
-| command_id | UUID | Unique ID for each tuple |
+| command_id | unsigned long long | Unique ID for each tuple |
 | raw_command | string | Full command string |
 | base_command | string | Root utility invoked (e.g., `ls`, `grep`, `docker`) |
 | shell_type | string | Shell used (e.g., `bash`, `zsh`) |
