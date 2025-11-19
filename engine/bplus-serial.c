@@ -67,7 +67,7 @@ typedef struct record
 typedef struct node
 {
     void **pointers;
-    int *keys;
+    unsigned long long *keys;
     struct node *parent;
     bool is_leaf;
     int num_keys;
@@ -86,33 +86,33 @@ int height(node *const root);                                                   
 int pathToLeaves(node *const root, node *child);                                // Distance (#edges) from child to root.
 void printLeaves(node *const root);                                             // Prints leaf keys in sorted order.
 void printTree(node *const root);                                               // Level-order visualization.
-void findAndPrint(node *const root, int key, bool verbose);                     // Lookup with output.
-void findAndPrintRange(node *const root, int range1, int range2, bool verbose); // Range output.
-int findRange(node *const root, int key_start, int key_end, bool verbose,
-              int returned_keys[], void *returned_pointers[]);    // Range core logic.
-node *findLeaf(node *const root, int key, bool verbose);          // Descend to target leaf.
-record *find(node *root, int key, bool verbose, node **leaf_out); // Record lookup.
+void findAndPrint(node *const root, unsigned long long key, bool verbose);                     // Lookup with output.
+void findAndPrintRange(node *const root, unsigned long long range1, unsigned long long range2, bool verbose); // Range output.
+int findRange(node *const root, unsigned long long key_start, unsigned long long key_end, bool verbose,
+              unsigned long long returned_keys[], void *returned_pointers[]);    // Range core logic.
+node *findLeaf(node *const root, unsigned long long key, bool verbose);          // Descend to target leaf.
+record *find(node *root, unsigned long long key, bool verbose, node **leaf_out); // Record lookup.
 int cut(int length);                                              // Split helper (ceil(length/2)).
 
 /* Allocation helpers */
-record *makeRecord(int value);
+record *makeRecord(unsigned long long command_id, int value);
 node *makeNode(void);
 node *makeLeaf(void);
 
 /* Insertion helpers */
 int getLeftIndex(node *parent, node *left);
-node *insertIntoLeaf(node *leaf, int key, record *pointer);
-node *insertIntoLeafAfterSplitting(node *root, node *leaf, int key,
+node *insertIntoLeaf(node *leaf, unsigned long long key, record *pointer);
+node *insertIntoLeafAfterSplitting(node *root, node *leaf, unsigned long long key,
                                    record *pointer);
 node *insertIntoNode(node *root, node *parent,
-                     int left_index, int key, node *right);
+                     int left_index, unsigned long long key, node *right);
 node *insertIntoNodeAfterSplitting(node *root, node *parent,
                                    int left_index,
-                                   int key, node *right);
-node *insertIntoParent(node *root, node *left, int key, node *right);
-node *insertIntoNewRoot(node *left, int key, node *right);
-node *startNewTree(int key, record *pointer);
-node *insert(node *root, int key, int value); // Public upsert API.
+                                   unsigned long long key, node *right);
+node *insertIntoParent(node *root, node *left, unsigned long long key, node *right);
+node *insertIntoNewRoot(node *left, unsigned long long key, node *right);
+node *startNewTree(unsigned long long key, record *pointer);
+node *insert(node *root, unsigned long long key, int value); // Public upsert API.
 
 /* enqueue: Append node to BFS queue (O(q)). */
 void enqueue(node *new_node)
@@ -162,7 +162,7 @@ void printLeaves(node *const root)
         {
             if (verbose_output)
                 printf("%p ", c->pointers[i]);
-            printf("%d ", c->keys[i]);
+            printf("%llu ", c->keys[i]);
         }
         if (verbose_output)
             printf("%p ", c->pointers[order - 1]);
@@ -236,7 +236,7 @@ void printTree(node *const root)
         {
             if (verbose_output)
                 printf("%p ", n->pointers[i]);
-            printf("%d ", n->keys[i]);
+            printf("%llu ", n->keys[i]);
         }
         if (!n->is_leaf)
             for (i = 0; i <= n->num_keys; i++)
@@ -253,25 +253,38 @@ void printTree(node *const root)
     printf("\n");
 }
 
-/* findAndPrint: Single-key lookup with formatted output. */
-void findAndPrint(node *const root, int key, bool verbose)
+// Updated findAndPrint to print all attributes of the record
+void findAndPrint(node *const root, unsigned long long key, bool verbose)
 {
     node *leaf = NULL;
     record *r = find(root, key, verbose, NULL);
     if (r == NULL)
-        printf("Record not found under key %d.\n", key);
+        printf("Record not found under key %llu.\n", key);
     else
-        printf("Record at %p -- key %d, value %d.\n",
-               r, key, r->value);
+    {
+        printf("Record at %p -- key %llu:\n", r, key);
+        printf("  Command ID: %llu\n", r->command_id);
+        printf("  Raw Command: %s\n", r->raw_command);
+        printf("  Base Command: %s\n", r->base_command);
+        printf("  Shell Type: %s\n", r->shell_type);
+        printf("  Exit Code: %d\n", r->exit_code);
+        printf("  Timestamp: %s\n", r->timestamp);
+        printf("  Sudo Used: %s\n", r->sudo_used ? "true" : "false");
+        printf("  Working Directory: %s\n", r->working_directory);
+        printf("  User ID: %d\n", r->user_id);
+        printf("  User Name: %s\n", r->user_name);
+        printf("  Host Name: %s\n", r->host_name);
+        printf("  Risk Level: %d\n", r->risk_level);
+    }
 }
 
-/* findAndPrintRange: Inclusive range scan followed by printing per match. */
-void findAndPrintRange(node *const root, int key_start, int key_end,
+// Updated findAndPrintRange to print all attributes of the record
+void findAndPrintRange(node *const root, unsigned long long key_start, unsigned long long key_end,
                        bool verbose)
 {
     int i;
-    int array_size = key_end - key_start + 1;
-    int returned_keys[array_size];
+    int array_size = (int)(key_end - key_start + 1);
+    unsigned long long returned_keys[array_size];
     void *returned_pointers[array_size];
     int num_found = findRange(root, key_start, key_end, verbose,
                               returned_keys, returned_pointers);
@@ -280,18 +293,28 @@ void findAndPrintRange(node *const root, int key_start, int key_end,
     else
     {
         for (i = 0; i < num_found; i++)
-            printf("Key: %d   Location: %p  Value: %d\n",
-                   returned_keys[i],
-                   returned_pointers[i],
-                   ((record *)
-                        returned_pointers[i])
-                       ->value);
+        {
+            record *r = (record *)returned_pointers[i];
+            printf("Key: %llu\n", returned_keys[i]);
+            printf("  Command ID: %llu\n", r->command_id);
+            printf("  Raw Command: %s\n", r->raw_command);
+            printf("  Base Command: %s\n", r->base_command);
+            printf("  Shell Type: %s\n", r->shell_type);
+            printf("  Exit Code: %d\n", r->exit_code);
+            printf("  Timestamp: %s\n", r->timestamp);
+            printf("  Sudo Used: %s\n", r->sudo_used ? "true" : "false");
+            printf("  Working Directory: %s\n", r->working_directory);
+            printf("  User ID: %d\n", r->user_id);
+            printf("  User Name: %s\n", r->user_name);
+            printf("  Host Name: %s\n", r->host_name);
+            printf("  Risk Level: %d\n", r->risk_level);
+        }
     }
 }
 
 /* findRange: Core range scan populating returned arrays; returns count. */
-int findRange(node *const root, int key_start, int key_end, bool verbose,
-              int returned_keys[], void *returned_pointers[])
+int findRange(node *const root, unsigned long long key_start, unsigned long long key_end, bool verbose,
+              unsigned long long returned_keys[], void *returned_pointers[])
 {
     int i, num_found;
     num_found = 0;
@@ -317,7 +340,7 @@ int findRange(node *const root, int key_start, int key_end, bool verbose,
 }
 
 /* findLeaf: Descends separators to leaf potentially containing key. */
-node *findLeaf(node *const root, int key, bool verbose)
+node *findLeaf(node *const root, unsigned long long key, bool verbose)
 {
     if (root == NULL)
     {
@@ -333,8 +356,8 @@ node *findLeaf(node *const root, int key, bool verbose)
         {
             printf("[");
             for (i = 0; i < c->num_keys - 1; i++)
-                printf("%d ", c->keys[i]);
-            printf("%d] ", c->keys[i]);
+                printf("%llu ", c->keys[i]);
+            printf("%llu] ", c->keys[i]);
         }
         i = 0;
         while (i < c->num_keys)
@@ -352,14 +375,14 @@ node *findLeaf(node *const root, int key, bool verbose)
     {
         printf("Leaf [");
         for (i = 0; i < c->num_keys - 1; i++)
-            printf("%d ", c->keys[i]);
-        printf("%d] ->\n", c->keys[i]);
+            printf("%llu ", c->keys[i]);
+        printf("%llu] ->\n", c->keys[i]);
     }
     return c;
 }
 
 /* find: Full lookup; returns record* or NULL; leaf_out optional. */
-record *find(node *root, int key, bool verbose, node **leaf_out)
+record *find(node *root, unsigned long long key, bool verbose, node **leaf_out)
 {
     if (root == NULL)
     {
@@ -398,7 +421,7 @@ int cut(int length)
 }
 
 /* makeRecord: Allocates and initializes a record; exits on failure. */
-record *makeRecord(int value)
+record *makeRecord(unsigned long long command_id, int value)
 {
     record *new_record = (record *)malloc(sizeof(record));
     if (new_record == NULL)
@@ -406,10 +429,18 @@ record *makeRecord(int value)
         perror("Record creation.");
         exit(EXIT_FAILURE);
     }
-    else
-    {
-        new_record->value = value;
-    }
+    new_record->command_id = command_id; // Initialize with provided command_id
+    strcpy(new_record->raw_command, "");
+    strcpy(new_record->base_command, "");
+    strcpy(new_record->shell_type, "");
+    new_record->exit_code = 0;
+    strcpy(new_record->timestamp, "");
+    new_record->sudo_used = false;
+    strcpy(new_record->working_directory, "");
+    new_record->user_id = 0;
+    strcpy(new_record->user_name, "");
+    strcpy(new_record->host_name, "");
+    new_record->risk_level = value; // Assign the provided value to risk_level
     return new_record;
 }
 
@@ -423,7 +454,7 @@ node *makeNode(void)
         perror("Node creation.");
         exit(EXIT_FAILURE);
     }
-    new_node->keys = malloc((order - 1) * sizeof(int));
+    new_node->keys = malloc((order - 1) * sizeof(unsigned long long));
     if (new_node->keys == NULL)
     {
         perror("New node keys array.");
@@ -461,7 +492,7 @@ int getLeftIndex(node *parent, node *left)
 }
 
 /* insertIntoLeaf: Inserts key/value into non-full leaf maintaining order. */
-node *insertIntoLeaf(node *leaf, int key, record *pointer)
+node *insertIntoLeaf(node *leaf, unsigned long long key, record *pointer)
 {
     int i, insertion_point;
 
@@ -481,16 +512,17 @@ node *insertIntoLeaf(node *leaf, int key, record *pointer)
 }
 
 /* insertIntoLeafAfterSplitting: Splits full leaf and promotes first key of new leaf. */
-node *insertIntoLeafAfterSplitting(node *root, node *leaf, int key, record *pointer)
+node *insertIntoLeafAfterSplitting(node *root, node *leaf, unsigned long long key, record *pointer)
 {
     node *new_leaf;
-    int *temp_keys;
+    unsigned long long *temp_keys;
     void **temp_pointers;
-    int insertion_index, split, new_key, i, j;
+    int insertion_index, split, i, j;
+    unsigned long long new_key;
 
     new_leaf = makeLeaf();
 
-    temp_keys = malloc(order * sizeof(int));
+    temp_keys = malloc(order * sizeof(unsigned long long));
     if (temp_keys == NULL)
     {
         perror("Temporary keys array.");
@@ -556,7 +588,7 @@ node *insertIntoLeafAfterSplitting(node *root, node *leaf, int key, record *poin
 
 /* insertIntoNode: Inserts separator & right child into non-full internal node. */
 node *insertIntoNode(node *root, node *n,
-                     int left_index, int key, node *right)
+                     int left_index, unsigned long long key, node *right)
 {
     int i;
 
@@ -573,11 +605,12 @@ node *insertIntoNode(node *root, node *n,
 
 /* insertIntoNodeAfterSplitting: Splits full internal node and promotes middle key. */
 node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_index,
-                                   int key, node *right)
+                                   unsigned long long key, node *right)
 {
-    int i, j, split, k_prime;
+    int i, j, split;
+    unsigned long long k_prime;
     node *new_node, *child;
-    int *temp_keys;
+    unsigned long long *temp_keys;
     node **temp_pointers;
 
     temp_pointers = malloc((order + 1) * sizeof(node *));
@@ -585,7 +618,7 @@ node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_index,
     {
         exit(EXIT_FAILURE);
     }
-    temp_keys = malloc(order * sizeof(int));
+    temp_keys = malloc(order * sizeof(unsigned long long));
     if (temp_keys == NULL)
     {
         exit(EXIT_FAILURE);
@@ -639,7 +672,7 @@ node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_index,
 }
 
 /* insertIntoParent: Chooses between simple insert, split, or new root creation. */
-node *insertIntoParent(node *root, node *left, int key, node *right)
+node *insertIntoParent(node *root, node *left, unsigned long long key, node *right)
 {
     int left_index;
     node *parent;
@@ -658,7 +691,7 @@ node *insertIntoParent(node *root, node *left, int key, node *right)
 }
 
 /* insertIntoNewRoot: Builds new root after old root splits. */
-node *insertIntoNewRoot(node *left, int key, node *right)
+node *insertIntoNewRoot(node *left, unsigned long long key, node *right)
 {
     node *root = makeNode();
     root->keys[0] = key;
@@ -672,7 +705,7 @@ node *insertIntoNewRoot(node *left, int key, node *right)
 }
 
 /* startNewTree: Initializes first leaf (root) with single key/value. */
-node *startNewTree(int key, record *pointer)
+node *startNewTree(unsigned long long key, record *pointer)
 {
     node *root = makeLeaf();
     root->keys[0] = key;
@@ -684,7 +717,7 @@ node *startNewTree(int key, record *pointer)
 }
 
 /* insert: Public upsert operation; handles empty tree, leaf insert, or splits. */
-node *insert(node *root, int key, int value)
+node *insert(node *root, unsigned long long key, int value)
 {
     record *record_pointer = NULL;
     node *leaf = NULL;
@@ -692,14 +725,16 @@ node *insert(node *root, int key, int value)
     record_pointer = find(root, key, false, NULL);
     if (record_pointer != NULL)
     {
-        record_pointer->value = value;
+        record_pointer->risk_level = value; // Update the risk_level field
         return root;
     }
 
-    record_pointer = makeRecord(value);
+    record_pointer = makeRecord(key, value);
 
     if (root == NULL)
+    {
         return startNewTree(key, record_pointer);
+    }
 
     leaf = findLeaf(root, key, false);
 
