@@ -37,7 +37,7 @@
  */
 typedef struct record
 {
-    int command_id; // Unique key for the record.
+    unsigned long long command_id; // Unique key for the record.
     char raw_command[512]; // Full command string.
     char base_command[100]; // Base command without arguments
     char shell_type[20]; // Type of shell (e.g., bash, zsh)
