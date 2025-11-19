@@ -1,11 +1,15 @@
 #ifndef SQL_H
 #define SQL_H
 
+#include <stdbool.h>
+
 // ---- ENUMS ----
 typedef enum {
     TOKEN_KEYWORD,
     TOKEN_IDENTIFIER,
     TOKEN_SYMBOL,
+    TOKEN_STRING, 
+    TOKEN_NUMBER,
     TOKEN_EOF
 } TokenType;
 
@@ -16,16 +20,48 @@ typedef enum {
     CMD_UNKNOWN
 } CommandType;
 
+typedef enum {
+    OP_NONE,
+    OP_EQ,      // =
+    OP_NEQ,     // !=
+    OP_GT,      // >
+    OP_LT,      // <
+    OP_GTE,     // >=
+    OP_LTE      // <=
+} OperatorType;
+
+typedef enum {
+    LOGIC_NONE,
+    LOGIC_AND,
+    LOGIC_OR
+} LogicOperator;
 
 // ---- STRUCTS ----
 typedef struct {
     TokenType type;
-    char value[64];
+    char value[256]; // Increased size for long strings
 } Token;
 
 typedef struct {
+    char column[64];
+    OperatorType op;
+    char value[256]; // Value to compare against
+    bool is_numeric; // Whether the value is a number or string/bool
+} Condition;
+
+typedef struct {
     CommandType command;
-    char identifier[64];
+    char table[64];
+    char columns[10][64]; // Up to 10 columns selected
+    int num_columns;
+    bool select_all;      // *
+    
+    Condition conditions[5]; // Up to 5 conditions
+    LogicOperator logic_ops[4]; // Logic between conditions (AND/OR)
+    int num_conditions;
+
+    char order_by[64];
+    bool order_desc;
 } ParsedSQL;
 
 
@@ -37,10 +73,6 @@ int tokenize(const char *input, Token tokens[], int max_tokens);
 // Parser
 ParsedSQL parse_tokens(Token tokens[]);
 
-// Dispatcher
-void dispatch(ParsedSQL *sql);
-
-// Command handlers
-void describe_table(const char *tablename);
+// Dispatcher removed
 
 #endif

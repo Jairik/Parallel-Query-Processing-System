@@ -3,7 +3,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include "sql.h"
+#include "../sql.h"
 
 // Helper: check if file exists
 int file_exists(const char *path) {
@@ -22,7 +22,7 @@ void process_sql_command(const char *command) {
 
     ParsedSQL sql = parse_tokens(tokens);
 
-    dispatch(&sql);
+    printf("Parsed Command Type: %d\n", sql.command);
 }
 
 int main(int argc, char *argv[]) {
