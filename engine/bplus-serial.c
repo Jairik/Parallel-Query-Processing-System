@@ -24,56 +24,16 @@
  * - Uses a simple queue built from node->next only during printing.
  */
 
+#include "../include/bplus-serial.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 // Default order (fanout). Adjust to change branching factor and height.
-#define ORDER 3 // TODO Optimize this (should be way higher)
+#define ORDER 3 // TODO Optimize this (may need to be way higher)
 
-/*
- * record: Each tuple stored in each leaf. Extendable for additional attributes.
- */
-typedef struct record
-{
-    unsigned long long command_id; // Unique key for the record.
-    char raw_command[512]; // Full command string.
-    char base_command[100]; // Base command without arguments
-    char shell_type[20]; // Type of shell (e.g., bash, zsh)
-    int exit_code; // Exit code of the command
-    char timestamp[30]; // Execution timestamp
-    bool sudo_used; // Whether the command was run with sudo
-    char working_directory[200]; // Directory where the command was executed
-    int user_id; // ID of the user who executed the command
-    char user_name[50]; // Name of the user who executed the command
-    char host_name[100]; // Hostname of the machine
-    int risk_level; // Risk level associated with the command
-} record;
-
-/*
- * node:
- * - keys: Array length ORDER-1; only indices [0..num_keys-1] populated.
- * - pointers:
- *   * Internal node: length ORDER; children in [0..num_keys].
- *   * Leaf node   : length ORDER; record* in [0..num_keys-1]; pointers[ORDER-1]
- *                   points to next leaf (or NULL).
- * - parent: Upward navigation supporting splits and printing.
- * - is_leaf: Distinguishes leaf vs internal behavior.
- * - num_keys: Active key count in this node.
- * - next: Temporary linkage used only for BFS printing (printTree). Not part
- *         of the logical B+ tree structure.
- */
-typedef struct node
-{
-    void **pointers;
-    unsigned long long *keys;
-    struct node *parent;
-    bool is_leaf;
-    int num_keys;
-    struct node *next; // Queue linkage for printing.
-} node;
-
+// Function definitions
 int order = ORDER;           // Runtime copy (could allow dynamic tuning).
 node *queue = NULL;          // Head of BFS print queue.
 bool verbose_output = false; // When true, emit pointer addresses for debugging.
