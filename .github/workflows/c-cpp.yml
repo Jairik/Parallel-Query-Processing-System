@@ -1,61 +1,35 @@
-name: C/C++ CI
+name: C CI
 
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - "**/*.c"
-      - "**/*.h"
-      - "Makefile"
-      - "makefile"
-      - "src/**"
-      - "include/**"
-      - "configure"
-      - "configure.ac"
-      - ".github/workflows/**"
   pull_request:
     branches: [ "main" ]
-    paths:
-      - "**/*.c"
-      - "**/*.h"
-      - "Makefile"
-      - "makefile"
-      - "src/**"
-      - "include/**"
-      - "configure"
-      - "configure.ac"
-      - ".github/workflows/**"
 
 jobs:
-  build-and-test:
+  build-and-valgrind:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Ensure that build tools and Valgrind are installed
       - name: Install build tools and Valgrind
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf automake libtool valgrind
+          sudo apt-get install -y build-essential valgrind
 
-      - name: Configure (with debug flags for better Valgrind reports)
-        run: ./configure CFLAGS="-g -O0"
-
+      # Build everything from the makefile
       - name: Build
-        run: make -j"$(nproc)"
+        run: make clean && make all
 
-      - name: Run test suite (make check)
-        run: make check
-
-      - name: Run tests under Valgrind (memory leak check)
-        env:
-          VALGRIND_OPTS: --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1
+      # 2) Run program/tests under Valgrind
+      - name: Run under Valgrind (memory leak check)
         run: |
-          # If using Automake, TESTS_ENVIRONMENT runs all tests under Valgrind
-          # This reuses the `make check` test harness.
-          make clean-check || true
-          make check TESTS_ENVIRONMENT="valgrind $VALGRIND_OPTS"
-
-      - name: Distcheck
-        run: make distcheck
+          valgrind \
+            --leak-check=full \
+            --show-leak-kinds=all \
+            --track-origins=yes \
+            --error-exitcode=1 \
+            ./run_tests

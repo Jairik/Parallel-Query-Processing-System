@@ -13,14 +13,9 @@ typedef struct node node;  // Pull node declaration from serial bplus
 typedef struct record record;  // Pull record declaration from serial bplus
 
 int main(int argc, char *argv[]) {
-    // Create the B+ tree from the provided data file
-    node *root = makeTreeS(argc, argv);
-    if (root == NULL) {
-        if (VERBOSE){fprintf(stderr, "Failed to load data into B+ tree from file: %s\n", argv[1]);}
-        return EXIT_FAILURE;
-    }
 
     // TODO load the command into the parser and somehow tokenize it to determine specific desired commands
+    // TODO instantiate an engine object to handle the execution of the query
     // TODO call the specific command from the executeEngine-serial.h file
     
 

@@ -1,1 +1,4 @@
 .vscode/c_cpp_properties.json
+*.o
+QPESeq
+build/tests/bplus-serial-test
