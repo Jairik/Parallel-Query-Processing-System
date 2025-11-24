@@ -29,6 +29,7 @@ The system provides a full pipeline—from data generation to query parsing to p
 * **engine/** - B+ tree implementation and query functionality (serial/parallel)
 * **include/** - Header files
 * **tokenizer/** - Command tokenizing functionality for main program
+* **docs/** - Various MD documentation on design choices and architectural motivation, as well as reports
 * **QPESeq.c** - Main serial implementation, using the serial engine
 * **QPEOMP.c** - Main parallel implementation, using the OpenMP engine
 * **QPEMPI.c** - Main parallel implementation, using the OpenMPI engine
