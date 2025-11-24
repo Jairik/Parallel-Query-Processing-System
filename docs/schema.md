@@ -19,6 +19,12 @@
 
 12 total attributes, which will allow for sufficient querying.
 
+## Best Indexes
+
+There should be minimal default row indexes, as each one will require a seperate B+ tree to be stored in memory. Below are the currently chosen *default* indexes:
+
+- TODO
+
 ## Generation
 
 Acheived via `generate_commands.py`. Will use some C-level ML to dynamically assign risk level at runtime at later phases.
