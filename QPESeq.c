@@ -1,7 +1,7 @@
 /* Skeleton for the Serial Implementation - uses the bplus serial engine and tokenizer to execute a provided SQL query */
 
 #include "include/bplus-serial.h"
-#include "include/makeTree-serial.h"
+#include "include/executeEngine-serial.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +20,8 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    // TODO load the command into the parser, tokenize it, and execute it using the B+ tree
+    // TODO load the command into the parser and somehow tokenize it to determine specific desired commands
+    // TODO call the specific command from the executeEngine-serial.h file
     
 
     return EXIT_SUCCESS;

@@ -6,8 +6,8 @@
  *   - Standard C libraries for I/O and string processing
  */
 
-#ifndef MAKETREE_SERIAL_H
-#define MAKETREE_SERIAL_H
+#ifndef BUILDTREE_SERIAL_H
+#define BUILDTREE_SERIAL_H
 
 #include "bplus-serial.h"
 #include <stdbool.h>
@@ -59,4 +59,4 @@ node *load_into_bplus_tree(const char *filename);
  */
 record *getRecordFromLine(char *line);
 
-#endif // MAKETREE_SERIAL_H
+#endif // BUILDTREE_SERIAL_H

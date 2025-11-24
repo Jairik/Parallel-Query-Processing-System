@@ -1,7 +1,9 @@
 /* Skeleton for the Serial Implementation - uses the bplus serial engine and tokenizer to execute a provided SQL query */
 
-#include "../include/makeTree-serial.h"
+#include "../../include/buildEngine-serial.h"
 #define VERBOSE 1
+
+record *allRecords; // Array to hold all records
 
 // Main function to create a serial B+ tree from data file, returns the tree root
 node *makeTreeS(int argc, char *argv[]) {

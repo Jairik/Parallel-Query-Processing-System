@@ -24,11 +24,13 @@
  * - Uses a simple queue built from node->next only during printing.
  */
 
-#include "../include/bplus-serial.h"
+#include "../../include/bplus-serial.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 // Default order (fanout). Adjust to change branching factor and height.
 #define ORDER 3 // TODO Optimize this (may need to be way higher)
@@ -46,33 +48,32 @@ int height(node *const root);                                                   
 int pathToLeaves(node *const root, node *child);                                // Distance (#edges) from child to root.
 void printLeaves(node *const root);                                             // Prints leaf keys in sorted order.
 void printTree(node *const root);                                               // Level-order visualization.
-void findAndPrint(node *const root, unsigned long long key, bool verbose);                     // Lookup with output.
-void findAndPrintRange(node *const root, unsigned long long range1, unsigned long long range2, bool verbose); // Range output.
-int findRange(node *const root, unsigned long long key_start, unsigned long long key_end, bool verbose,
-              unsigned long long returned_keys[], void *returned_pointers[]);    // Range core logic.
-node *findLeaf(node *const root, unsigned long long key, bool verbose);          // Descend to target leaf.
-record *find(node *root, unsigned long long key, bool verbose, node **leaf_out); // Record lookup.
+void findAndPrint(node *const root, KEY_T key, bool verbose);                     // Lookup with output.
+void findAndPrintRange(node *const root, KEY_T range1, KEY_T range2, bool verbose); // Range output.
+int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
+              KEY_T returned_keys[], ROW_PTR returned_pointers[]);    // Range core logic.
+node *findLeaf(node *const root, KEY_T key, bool verbose);          // Descend to target leaf.
+ROW_PTR find_row(node *root, KEY_T key);                            // Row lookup.
 int cut(int length);                                              // Split helper (ceil(length/2)).
 
 /* Allocation helpers */
-record *makeRecord(unsigned long long command_id, int value);
 node *makeNode(void);
 node *makeLeaf(void);
 
 /* Insertion helpers */
 int getLeftIndex(node *parent, node *left);
-node *insertIntoLeaf(node *leaf, unsigned long long key, record *pointer);
-node *insertIntoLeafAfterSplitting(node *root, node *leaf, unsigned long long key,
-                                   record *pointer);
+node *insertIntoLeaf(node *leaf, KEY_T key, ROW_PTR row_ptr);
+node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key,
+                                   ROW_PTR row_ptr);
 node *insertIntoNode(node *root, node *parent,
-                     int left_index, unsigned long long key, node *right);
+                     int left_index, KEY_T key, node *right);
 node *insertIntoNodeAfterSplitting(node *root, node *parent,
                                    int left_index,
-                                   unsigned long long key, node *right);
-node *insertIntoParent(node *root, node *left, unsigned long long key, node *right);
-node *insertIntoNewRoot(node *left, unsigned long long key, node *right);
-node *startNewTree(unsigned long long key, record *pointer);
-node *insert(node *root, unsigned long long key, int value); // Public upsert API.
+                                   KEY_T key, node *right);
+node *insertIntoParent(node *root, node *left, KEY_T key, node *right);
+node *insertIntoNewRoot(node *left, KEY_T key, node *right);
+node *startNewTree(KEY_T key, ROW_PTR row_ptr);
+node *insert(node *root, KEY_T key, ROW_PTR row_ptr); // Public upsert API.
 
 /* enqueue: Append node to BFS queue (O(q)). */
 void enqueue(node *new_node)
@@ -122,7 +123,7 @@ void printLeaves(node *const root)
         {
             if (verbose_output)
                 printf("%p ", c->pointers[i]);
-            printf("%llu ", c->keys[i]);
+            printf("%" PRIu64 " ", c->keys[i]);
         }
         if (verbose_output)
             printf("%p ", c->pointers[order - 1]);
@@ -196,7 +197,7 @@ void printTree(node *const root)
         {
             if (verbose_output)
                 printf("%p ", n->pointers[i]);
-            printf("%llu ", n->keys[i]);
+            printf("%" PRIu64 " ", n->keys[i]);
         }
         if (!n->is_leaf)
             for (i = 0; i <= n->num_keys; i++)
@@ -213,84 +214,67 @@ void printTree(node *const root)
     printf("\n");
 }
 
-// Updated findAndPrint to print all attributes of the record
-void findAndPrint(node *const root, unsigned long long key, bool verbose)
+void findAndPrint(node *const root, KEY_T key, bool verbose)
 {
-    node *leaf = NULL;
-    record *r = find(root, key, verbose, NULL);
-    if (r == NULL)
-        printf("Record not found under key %llu.\n", key);
+    ROW_PTR row = find_row(root, key);
+    if (row == NULL)
+        printf("Row not found under key %llu.\n", (unsigned long long)key);
     else
-    {
-        printf("Record at %p -- key %llu:\n", r, key);
-        printf("  Command ID: %llu\n", r->command_id);
-        printf("  Raw Command: %s\n", r->raw_command);
-        printf("  Base Command: %s\n", r->base_command);
-        printf("  Shell Type: %s\n", r->shell_type);
-        printf("  Exit Code: %d\n", r->exit_code);
-        printf("  Timestamp: %s\n", r->timestamp);
-        printf("  Sudo Used: %s\n", r->sudo_used ? "true" : "false");
-        printf("  Working Directory: %s\n", r->working_directory);
-        printf("  User ID: %d\n", r->user_id);
-        printf("  User Name: %s\n", r->user_name);
-        printf("  Host Name: %s\n", r->host_name);
-        printf("  Risk Level: %d\n", r->risk_level);
-    }
+        printf("Found row pointer %p for key %llu.\n", row, (unsigned long long)key);
 }
 
-// Updated findAndPrintRange to print all attributes of the record
-void findAndPrintRange(node *const root, unsigned long long key_start, unsigned long long key_end,
-                       bool verbose)
+void findAndPrintRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose)
 {
-    int i;
     int array_size = (int)(key_end - key_start + 1);
-    unsigned long long returned_keys[array_size];
-    void *returned_pointers[array_size];
+    KEY_T *returned_keys = malloc(array_size * sizeof(KEY_T));
+    ROW_PTR *returned_ptrs = malloc(array_size * sizeof(ROW_PTR));
+    if (!returned_keys || !returned_ptrs) {
+        perror("Range arrays");
+        exit(EXIT_FAILURE);
+    }
+
     int num_found = findRange(root, key_start, key_end, verbose,
-                              returned_keys, returned_pointers);
-    if (!num_found)
+                              returned_keys, returned_ptrs);
+    if (!num_found) {
         printf("None found.\n");
-    else
-    {
-        for (i = 0; i < num_found; i++)
-        {
-            record *r = (record *)returned_pointers[i];
-            printf("Key: %llu\n", returned_keys[i]);
-            printf("  Command ID: %llu\n", r->command_id);
-            printf("  Raw Command: %s\n", r->raw_command);
-            printf("  Base Command: %s\n", r->base_command);
-            printf("  Shell Type: %s\n", r->shell_type);
-            printf("  Exit Code: %d\n", r->exit_code);
-            printf("  Timestamp: %s\n", r->timestamp);
-            printf("  Sudo Used: %s\n", r->sudo_used ? "true" : "false");
-            printf("  Working Directory: %s\n", r->working_directory);
-            printf("  User ID: %d\n", r->user_id);
-            printf("  User Name: %s\n", r->user_name);
-            printf("  Host Name: %s\n", r->host_name);
-            printf("  Risk Level: %d\n", r->risk_level);
+    } else {
+        for (int i = 0; i < num_found; i++) {
+            printf("Key %llu -> row %p\n",
+                   (unsigned long long)returned_keys[i],
+                   returned_ptrs[i]);
         }
     }
+
+    free(returned_keys);
+    free(returned_ptrs);
 }
 
 /* findRange: Core range scan populating returned arrays; returns count. */
-int findRange(node *const root, unsigned long long key_start, unsigned long long key_end, bool verbose,
-              unsigned long long returned_keys[], void *returned_pointers[])
+int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
+              KEY_T returned_keys[], ROW_PTR returned_pointers[])
 {
     int i, num_found;
     num_found = 0;
     node *n = findLeaf(root, key_start, verbose);
     if (n == NULL)
         return 0;
+    
+    // Skip keys less than key_start
     for (i = 0; i < n->num_keys && n->keys[i] < key_start; i++)
         ;
-    if (i == n->num_keys)
-        return 0;
+    
+    // If we exhausted this leaf, move to next
+    if (i == n->num_keys) {
+        n = n->pointers[order - 1];
+        i = 0;
+    }
+    
     while (n != NULL)
     {
         for (; i < n->num_keys && n->keys[i] <= key_end; i++)
         {
             returned_keys[num_found] = n->keys[i];
-            returned_pointers[num_found] = n->pointers[i];
+            returned_pointers[num_found] = (ROW_PTR)n->pointers[i];
             num_found++;
         }
         n = n->pointers[order - 1];
@@ -300,13 +284,13 @@ int findRange(node *const root, unsigned long long key_start, unsigned long long
 }
 
 /* findLeaf: Descends separators to leaf potentially containing key. */
-node *findLeaf(node *const root, unsigned long long key, bool verbose)
+node *findLeaf(node *const root, KEY_T key, bool verbose)
 {
     if (root == NULL)
     {
         if (verbose)
             printf("Empty tree.\n");
-        return root;
+        return NULL;
     }
     int i = 0;
     node *c = root;
@@ -316,17 +300,12 @@ node *findLeaf(node *const root, unsigned long long key, bool verbose)
         {
             printf("[");
             for (i = 0; i < c->num_keys - 1; i++)
-                printf("%llu ", c->keys[i]);
-            printf("%llu] ", c->keys[i]);
+                printf("%llu ", (unsigned long long)c->keys[i]);
+            printf("%llu] ", (unsigned long long)c->keys[i]);
         }
         i = 0;
-        while (i < c->num_keys)
-        {
-            if (key >= c->keys[i])
-                i++;
-            else
-                break;
-        }
+        while (i < c->num_keys && key >= c->keys[i])
+            i++;
         if (verbose)
             printf("%d ->\n", i);
         c = (node *)c->pointers[i];
@@ -335,40 +314,27 @@ node *findLeaf(node *const root, unsigned long long key, bool verbose)
     {
         printf("Leaf [");
         for (i = 0; i < c->num_keys - 1; i++)
-            printf("%llu ", c->keys[i]);
-        printf("%llu] ->\n", c->keys[i]);
+            printf("%llu ", (unsigned long long)c->keys[i]);
+        printf("%llu] ->\n", (unsigned long long)c->keys[i]);
     }
     return c;
 }
 
-/* find: Full lookup; returns record* or NULL; leaf_out optional. */
-record *find(node *root, unsigned long long key, bool verbose, node **leaf_out)
+/* find_row: returns the row pointer for a given key, or NULL. */
+ROW_PTR find_row(node *root, KEY_T key)
 {
     if (root == NULL)
-    {
-        if (leaf_out != NULL)
-        {
-            *leaf_out = NULL;
-        }
         return NULL;
-    }
 
-    int i = 0;
-    node *leaf = NULL;
+    node *leaf = findLeaf(root, key, false);
+    if (leaf == NULL)
+        return NULL;
 
-    leaf = findLeaf(root, key, verbose);
-
-    for (i = 0; i < leaf->num_keys; i++)
+    for (int i = 0; i < leaf->num_keys; i++) {
         if (leaf->keys[i] == key)
-            break;
-    if (leaf_out != NULL)
-    {
-        *leaf_out = leaf;
+            return (ROW_PTR)leaf->pointers[i];
     }
-    if (i == leaf->num_keys)
-        return NULL;
-    else
-        return (record *)leaf->pointers[i];
+    return NULL;
 }
 
 /* cut: Returns split index favoring left side when odd length. */
@@ -378,30 +344,6 @@ int cut(int length)
         return length / 2;
     else
         return length / 2 + 1;
-}
-
-/* makeRecord: Allocates and initializes a record; exits on failure. */
-record *makeRecord(unsigned long long command_id, int value)
-{
-    record *new_record = (record *)malloc(sizeof(record));
-    if (new_record == NULL)
-    {
-        perror("Record creation.");
-        exit(EXIT_FAILURE);
-    }
-    new_record->command_id = command_id; // Initialize with provided command_id
-    strcpy(new_record->raw_command, "");
-    strcpy(new_record->base_command, "");
-    strcpy(new_record->shell_type, "");
-    new_record->exit_code = 0;
-    strcpy(new_record->timestamp, "");
-    new_record->sudo_used = false;
-    strcpy(new_record->working_directory, "");
-    new_record->user_id = 0;
-    strcpy(new_record->user_name, "");
-    strcpy(new_record->host_name, "");
-    new_record->risk_level = value; // Assign the provided value to risk_level
-    return new_record;
 }
 
 /* makeNode: Allocates an internal node with key/pointer arrays. */
@@ -414,7 +356,7 @@ node *makeNode(void)
         perror("Node creation.");
         exit(EXIT_FAILURE);
     }
-    new_node->keys = malloc((order - 1) * sizeof(unsigned long long));
+    new_node->keys = malloc((order - 1) * sizeof(KEY_T));
     if (new_node->keys == NULL)
     {
         perror("New node keys array.");
@@ -451,57 +393,41 @@ int getLeftIndex(node *parent, node *left)
     return left_index;
 }
 
-/* insertIntoLeaf: Inserts key/value into non-full leaf maintaining order. */
-node *insertIntoLeaf(node *leaf, unsigned long long key, record *pointer)
+/* insertIntoLeaf: Inserts key / row_ptr into non-full leaf maintaining order. */
+node *insertIntoLeaf(node *leaf, KEY_T key, ROW_PTR row_ptr)
 {
-    int i, insertion_point;
+    int i, insertion_point = 0;
 
-    insertion_point = 0;
     while (insertion_point < leaf->num_keys && leaf->keys[insertion_point] < key)
         insertion_point++;
 
-    for (i = leaf->num_keys; i > insertion_point; i--)
-    {
+    for (i = leaf->num_keys; i > insertion_point; i--) {
         leaf->keys[i] = leaf->keys[i - 1];
         leaf->pointers[i] = leaf->pointers[i - 1];
     }
     leaf->keys[insertion_point] = key;
-    leaf->pointers[insertion_point] = pointer;
+    leaf->pointers[insertion_point] = row_ptr;
     leaf->num_keys++;
     return leaf;
 }
 
 /* insertIntoLeafAfterSplitting: Splits full leaf and promotes first key of new leaf. */
-node *insertIntoLeafAfterSplitting(node *root, node *leaf, unsigned long long key, record *pointer)
+node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key, ROW_PTR row_ptr)
 {
-    node *new_leaf;
-    unsigned long long *temp_keys;
-    void **temp_pointers;
-    int insertion_index, split, i, j;
-    unsigned long long new_key;
-
-    new_leaf = makeLeaf();
-
-    temp_keys = malloc(order * sizeof(unsigned long long));
-    if (temp_keys == NULL)
-    {
-        perror("Temporary keys array.");
+    node *new_leaf = makeLeaf();
+    KEY_T *temp_keys = malloc(order * sizeof(KEY_T));
+    void **temp_pointers = malloc(order * sizeof(void *));
+    if (!temp_keys || !temp_pointers) {
+        perror("Temporary arrays allocation failed");
         exit(EXIT_FAILURE);
     }
 
-    temp_pointers = malloc(order * sizeof(void *));
-    if (temp_pointers == NULL)
-    {
-        perror("Temporary pointers array.");
-        exit(EXIT_FAILURE);
-    }
-
-    insertion_index = 0;
+    int insertion_index = 0;
     while (insertion_index < order - 1 && leaf->keys[insertion_index] < key)
         insertion_index++;
 
-    for (i = 0, j = 0; i < leaf->num_keys; i++, j++)
-    {
+    int i, j;
+    for (i = 0, j = 0; i < leaf->num_keys; i++, j++) {
         if (j == insertion_index)
             j++;
         temp_keys[j] = leaf->keys[i];
@@ -509,28 +435,26 @@ node *insertIntoLeafAfterSplitting(node *root, node *leaf, unsigned long long ke
     }
 
     temp_keys[insertion_index] = key;
-    temp_pointers[insertion_index] = pointer;
+    temp_pointers[insertion_index] = row_ptr;
 
     leaf->num_keys = 0;
 
-    split = cut(order - 1);
+    int split = cut(order - 1);
 
-    for (i = 0; i < split; i++)
-    {
-        leaf->pointers[i] = temp_pointers[i];
+    for (i = 0; i < split; i++) {
         leaf->keys[i] = temp_keys[i];
+        leaf->pointers[i] = temp_pointers[i];
         leaf->num_keys++;
     }
 
-    for (i = split, j = 0; i < order; i++, j++)
-    {
-        new_leaf->pointers[j] = temp_pointers[i];
+    for (i = split, j = 0; i < order; i++, j++) {
         new_leaf->keys[j] = temp_keys[i];
+        new_leaf->pointers[j] = temp_pointers[i];
         new_leaf->num_keys++;
     }
 
-    free(temp_pointers);
     free(temp_keys);
+    free(temp_pointers);
 
     new_leaf->pointers[order - 1] = leaf->pointers[order - 1];
     leaf->pointers[order - 1] = new_leaf;
@@ -541,14 +465,14 @@ node *insertIntoLeafAfterSplitting(node *root, node *leaf, unsigned long long ke
         new_leaf->pointers[i] = NULL;
 
     new_leaf->parent = leaf->parent;
-    new_key = new_leaf->keys[0];
+    KEY_T new_key = new_leaf->keys[0];
 
     return insertIntoParent(root, leaf, new_key, new_leaf);
 }
 
 /* insertIntoNode: Inserts separator & right child into non-full internal node. */
 node *insertIntoNode(node *root, node *n,
-                     int left_index, unsigned long long key, node *right)
+                     int left_index, KEY_T key, node *right)
 {
     int i;
 
@@ -565,12 +489,12 @@ node *insertIntoNode(node *root, node *n,
 
 /* insertIntoNodeAfterSplitting: Splits full internal node and promotes middle key. */
 node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_index,
-                                   unsigned long long key, node *right)
+                                   KEY_T key, node *right)
 {
     int i, j, split;
-    unsigned long long k_prime;
+    KEY_T k_prime;
     node *new_node, *child;
-    unsigned long long *temp_keys;
+    KEY_T *temp_keys;
     node **temp_pointers;
 
     temp_pointers = malloc((order + 1) * sizeof(node *));
@@ -578,7 +502,7 @@ node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_index,
     {
         exit(EXIT_FAILURE);
     }
-    temp_keys = malloc(order * sizeof(unsigned long long));
+    temp_keys = malloc(order * sizeof(KEY_T));
     if (temp_keys == NULL)
     {
         exit(EXIT_FAILURE);
@@ -632,7 +556,7 @@ node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_index,
 }
 
 /* insertIntoParent: Chooses between simple insert, split, or new root creation. */
-node *insertIntoParent(node *root, node *left, unsigned long long key, node *right)
+node *insertIntoParent(node *root, node *left, KEY_T key, node *right)
 {
     int left_index;
     node *parent;
@@ -651,7 +575,7 @@ node *insertIntoParent(node *root, node *left, unsigned long long key, node *rig
 }
 
 /* insertIntoNewRoot: Builds new root after old root splits. */
-node *insertIntoNewRoot(node *left, unsigned long long key, node *right)
+node *insertIntoNewRoot(node *left, KEY_T key, node *right)
 {
     node *root = makeNode();
     root->keys[0] = key;
@@ -664,67 +588,48 @@ node *insertIntoNewRoot(node *left, unsigned long long key, node *right)
     return root;
 }
 
-/* startNewTree: Initializes first leaf (root) with single key/value. */
-node *startNewTree(unsigned long long key, record *pointer)
+/* startNewTree: Initializes first leaf (root) with single key / row_ptr. */
+node *startNewTree(KEY_T key, ROW_PTR row_ptr)
 {
     node *root = makeLeaf();
     root->keys[0] = key;
-    root->pointers[0] = pointer;
+    root->pointers[0] = row_ptr;
     root->pointers[order - 1] = NULL;
     root->parent = NULL;
-    root->num_keys++;
+    root->num_keys = 1;
     return root;
 }
 
-/* insert: Public upsert operation; handles empty tree, leaf insert, or splits. */
-node *insert(node *root, unsigned long long key, int value)
+/* insert: Public operation; handles empty tree, leaf insert, or splits. */
+node *insert(node *root, KEY_T key, ROW_PTR row_ptr)
 {
-    record *record_pointer = NULL;
+    /* Upsert behavior: if key exists, overwrite the row pointer. */
     node *leaf = NULL;
+    ROW_PTR existing = NULL;
 
-    record_pointer = find(root, key, false, NULL);
-    if (record_pointer != NULL)
-    {
-        record_pointer->risk_level = value; // Update the risk_level field
-        return root;
+    existing = find_row(root, key);
+    if (existing != NULL) {
+        // Find the leaf again and overwrite its pointer.
+        leaf = findLeaf(root, key, false);
+        if (leaf != NULL) {
+            for (int i = 0; i < leaf->num_keys; i++) {
+                if (leaf->keys[i] == key) {
+                    leaf->pointers[i] = row_ptr;
+                    return root;
+                }
+            }
+        }
     }
-
-    record_pointer = makeRecord(key, value);
 
     if (root == NULL)
-    {
-        return startNewTree(key, record_pointer);
-    }
+        return startNewTree(key, row_ptr);
 
     leaf = findLeaf(root, key, false);
 
-    if (leaf->num_keys < order - 1)
-    {
-        leaf = insertIntoLeaf(leaf, key, record_pointer);
+    if (leaf->num_keys < order - 1) {
+        insertIntoLeaf(leaf, key, row_ptr);
         return root;
     }
 
-    return insertIntoLeafAfterSplitting(root, leaf, key, record_pointer);
-}
-
-/*
- * main: Demonstration of building a small tree and performing a lookup.
- * Integrate by invoking insert/find as part of query execution stages.
- */
-int main()
-{
-    node *root;
-    char instruction;
-
-    root = NULL;
-
-    root = insert(root, 5, 33);
-    root = insert(root, 15, 21);
-    root = insert(root, 25, 31);
-    root = insert(root, 35, 41);
-    root = insert(root, 45, 10);
-
-    printTree(root);
-
-    findAndPrint(root, 15, instruction = 'a');
+    return insertIntoLeafAfterSplitting(root, leaf, key, row_ptr);
 }

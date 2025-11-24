@@ -21,4 +21,4 @@
 
 ## Generation
 
-**TBD**. However, will have to train some sort of basic classification model to train a model to evaluate risk_level.
+Acheived via `generate_commands.py`. Will use some C-level ML to dynamically assign risk level at runtime at later phases.
