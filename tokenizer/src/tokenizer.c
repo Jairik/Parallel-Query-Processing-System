@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "../sql.h"
+#include "sql.h"
 
 // ---- TOKENIZER ----
 int tokenize(const char *input, Token tokens[], int max_tokens) {
@@ -91,9 +91,10 @@ int tokenize(const char *input, Token tokens[], int max_tokens) {
             if (strcmp(upper, "SELECT") == 0 || strcmp(upper, "FROM") == 0 || 
                 strcmp(upper, "WHERE") == 0 || strcmp(upper, "ORDER") == 0 || 
                 strcmp(upper, "BY") == 0 || strcmp(upper, "DESC") == 0 || 
-                strcmp(upper, "ASC") == 0 || strcmp(upper, "AND") == 0 || 
                 strcmp(upper, "OR") == 0 || strcmp(upper, "TRUE") == 0 || 
-                strcmp(upper, "FALSE") == 0 || strcmp(upper, "DESCRIBE") == 0) {
+                strcmp(upper, "FALSE") == 0 || strcmp(upper, "DESCRIBE") == 0 ||
+                strcmp(upper, "INSERT") == 0 || strcmp(upper, "INTO") == 0 ||
+                strcmp(upper, "VALUES") == 0 || strcmp(upper, "DELETE") == 0) {
                 tokens[i].type = TOKEN_KEYWORD;
                 strcpy(tokens[i].value, upper); // Store as uppercase
             } else {
@@ -228,6 +229,89 @@ ParsedSQL parse_tokens(Token tokens[]) {
                     } else if (strcmp(tokens[i].value, "ASC") == 0) {
                         sql.order_desc = false;
                         i++;
+                    }
+                }
+            }
+        }
+        else if (strcmp(tokens[i].value, "INSERT") == 0) {
+            sql.command = CMD_INSERT;
+            i++;
+            if (strcmp(tokens[i].value, "INTO") == 0) i++;
+            if (tokens[i].type == TOKEN_IDENTIFIER) {
+                strcpy(sql.table, tokens[i].value);
+                i++;
+            }
+            if (strcmp(tokens[i].value, "VALUES") == 0) i++;
+            if (strcmp(tokens[i].value, "(") == 0) i++;
+            
+            while (tokens[i].type != TOKEN_EOF && strcmp(tokens[i].value, ")") != 0) {
+                if (strcmp(tokens[i].value, ",") == 0) {
+                    i++;
+                    continue;
+                }
+                strcpy(sql.insert_values[sql.num_values++], tokens[i].value);
+                i++;
+            }
+        }
+        else if (strcmp(tokens[i].value, "DELETE") == 0) {
+            sql.command = CMD_DELETE;
+            i++;
+            if (strcmp(tokens[i].value, "FROM") == 0) i++;
+            if (tokens[i].type == TOKEN_IDENTIFIER) {
+                strcpy(sql.table, tokens[i].value);
+                i++;
+            }
+
+            // Parse WHERE
+            if (strcmp(tokens[i].value, "WHERE") == 0) {
+                i++;
+                while (tokens[i].type != TOKEN_EOF && strcmp(tokens[i].value, ";") != 0) {
+                    if (sql.num_conditions >= 5) break;
+                    
+                    Condition *cond = &sql.conditions[sql.num_conditions];
+                    
+                    // Column
+                    if (tokens[i].type == TOKEN_IDENTIFIER) {
+                        strcpy(cond->column, tokens[i].value);
+                        i++;
+                    }
+
+                    // Operator
+                    if (strcmp(tokens[i].value, "=") == 0) cond->op = OP_EQ;
+                    else if (strcmp(tokens[i].value, "!=") == 0) cond->op = OP_NEQ;
+                    else if (strcmp(tokens[i].value, ">") == 0) cond->op = OP_GT;
+                    else if (strcmp(tokens[i].value, "<") == 0) cond->op = OP_LT;
+                    else if (strcmp(tokens[i].value, ">=") == 0) cond->op = OP_GTE;
+                    else if (strcmp(tokens[i].value, "<=") == 0) cond->op = OP_LTE;
+                    else cond->op = OP_NONE;
+                    i++;
+
+                    // Value
+                    if (tokens[i].type == TOKEN_STRING) {
+                        strcpy(cond->value, tokens[i].value);
+                        cond->is_numeric = false;
+                        i++;
+                    } else if (tokens[i].type == TOKEN_NUMBER) {
+                        strcpy(cond->value, tokens[i].value);
+                        cond->is_numeric = true;
+                        i++;
+                    } else if (tokens[i].type == TOKEN_KEYWORD && (strcmp(tokens[i].value, "TRUE") == 0 || strcmp(tokens[i].value, "FALSE") == 0)) {
+                         strcpy(cond->value, tokens[i].value);
+                         cond->is_numeric = false; // Treat boolean as string for now
+                         i++;
+                    }
+
+                    sql.num_conditions++;
+
+                    // Logic Op
+                    if (strcmp(tokens[i].value, "AND") == 0) {
+                        sql.logic_ops[sql.num_conditions-1] = LOGIC_AND;
+                        i++;
+                    } else if (strcmp(tokens[i].value, "OR") == 0) {
+                        sql.logic_ops[sql.num_conditions-1] = LOGIC_OR;
+                        i++;
+                    } else {
+                        sql.logic_ops[sql.num_conditions-1] = LOGIC_NONE;
                     }
                 }
             }

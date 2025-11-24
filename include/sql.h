@@ -17,6 +17,8 @@ typedef enum {
     CMD_NONE,
     CMD_DESCRIBE,
     CMD_SELECT,
+    CMD_INSERT,
+    CMD_DELETE,
     CMD_UNKNOWN
 } CommandType;
 
@@ -59,6 +61,9 @@ typedef struct {
     Condition conditions[5]; // Up to 5 conditions
     LogicOperator logic_ops[4]; // Logic between conditions (AND/OR)
     int num_conditions;
+
+    char insert_values[10][256];
+    int num_values;
 
     char order_by[64];
     bool order_desc;
