@@ -1,49 +1,67 @@
-/*
- * Header file for Serial B+ Tree Construction
- *
- * Dependencies:
- *   - bplus-serial.h: Core B+ tree implementation (node, record, insert, etc.)
- *   - Standard C libraries for I/O and string processing
- */
+/* Header file for Serial B+ Tree Construction */
 
 #ifndef BUILDTREE_SERIAL_H
 #define BUILDTREE_SERIAL_H
 
 #include "bplus-serial.h"
+#include "executeEngine-serial.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 /*
- * Main entry point for serial B+ tree construction
- * Parses command-line arguments, loads data from the specified CSV file,
- * and constructs a B+ tree indexed by command_id.
+ * makeIndexSerial: Creates a B+ tree index from engine records
+ * 
+ * Builds a B+ tree from the records stored in the engine structure,
+ * using command_id as the indexing key. The index is associated with
+ * the specified index name.
  * 
  * Parameters:
- *   argc - argument count from command line
- *   argv - argument vector; argv[1] should contain the data file path
+ *   engine - pointer to the engine structure containing all_records
+ *   indexName - name identifier for this index
  * 
  * Returns:
  *   Pointer to the root node of the constructed B+ tree, or NULL on failure
  */
-node *makeTreeS(int argc, char *argv[]);
+node *makeIndexSerial(struct engineS *engine, const char *indexName);
 
 /*
- * Helper function for loading CSV data into a B+ tree structure
- * Reads a CSV file line-by-line, parsing each line into a record struct
- * and inserting it into the B+ tree using command_id as the key.
+ * loadIntoBplusTree: Loads an array of records into a B+ tree
+ * 
+ * Iterates through the provided array of record pointers and inserts each
+ * record into a B+ tree using command_id as the key. The tree is built
+ * incrementally with automatic splitting when nodes become full.
  * 
  * Parameters:
- *   filename - path to the CSV data file
+ *   records - array of record pointers to insert
+ *   num_records - number of records in the array
  * 
  * Returns:
  *   Pointer to the root node of the populated B+ tree, or NULL on error
  */
-node *load_into_bplus_tree(const char *filename);
+node *loadIntoBplusTree(record **records, int num_records);
 
 /*
- * Helper function for parsing a CSV line into a record struct
+ * getAllRecordsFromFile: Loads CSV file into memory as record array
+ * 
+ * Reads a CSV file line-by-line, parsing each line into a record struct
+ * and building a dynamically allocated array of all records. The array
+ * is resized as needed during reading.
+ * 
+ * Parameters:
+ *   filepath - path to the CSV data file
+ *   num_records - output parameter set to the count of loaded records
+ * 
+ * Returns:
+ *   Pointer to dynamically allocated array of record pointers, or NULL on error.
+ *   Caller is responsible for freeing the array and individual records.
+ */
+record **getAllRecordsFromFile(const char *filepath, int *num_records);
+
+/*
+ * getRecordFromLine: Parses a CSV line into a record struct
+ * 
  * Tokenizes a comma-separated line and populates all fields of a record
  * struct according to the expected CSV schema:
  *   command_id, raw_command, base_command, shell_type, exit_code,
@@ -55,7 +73,7 @@ node *load_into_bplus_tree(const char *filename);
  * 
  * Returns:
  *   Pointer to a newly allocated and populated record struct, or NULL on
- *   memory allocation failure
+ *   memory allocation failure. Caller is responsible for freeing.
  */
 record *getRecordFromLine(char *line);
 
