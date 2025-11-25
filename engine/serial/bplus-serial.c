@@ -32,7 +32,7 @@ int height(node *const root);                                                   
 int pathToLeaves(node *const root, node *child);                                // Distance (#edges) from child to root.
 void printLeaves(node *const root);                                             // Prints leaf keys in sorted order.
 void printTree(node *const root);                                               // Level-order visualization.
-void findAndPrint(node *const root, KEY_T key, bool verbose);                   // Lookup with output.
+void findAndPrint(node *const root, KEY_T key);                   // Lookup with output.
 void findAndPrintRange(node *const root, KEY_T range1, KEY_T range2, bool verbose); // Range output.
 int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
               KEY_T returned_keys[], ROW_PTR returned_pointers[]);              // Range core logic.
@@ -223,7 +223,7 @@ void printTree(node *const root) {
 
 /* ==================== Lookup wrappers ==================== */
 
-void findAndPrint(node *const root, KEY_T key, bool verbose) {
+void findAndPrint(node *const root, KEY_T key) {
     ROW_PTR row = find_row(root, key);
     if (row == NULL)
     {
@@ -240,7 +240,7 @@ void findAndPrint(node *const root, KEY_T key, bool verbose) {
 }
 
 void findAndPrintRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose) {
-    int array_size = 128; // arbitrary upper bound; caller usually knows better
+    int array_size = 128; // arbitrary upper bound
     KEY_T *returned_keys = malloc(array_size * sizeof(KEY_T));
     ROW_PTR *returned_ptrs = malloc(array_size * sizeof(ROW_PTR));
     if (!returned_keys || !returned_ptrs) {

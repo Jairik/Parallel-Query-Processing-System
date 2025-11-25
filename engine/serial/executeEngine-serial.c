@@ -1,5 +1,6 @@
 /* Main engine functionality and whatnot */
 
+#define _POSIX_C_SOURCE 200809L  // Enable strdup
 #include "../../include/buildEngine-serial.h"
 #include "../../include/executeEngine-serial.h"
 #define VERBOSE 1
@@ -153,12 +154,12 @@ char *executeQuerySelectSerial(
 bool executeQueryInsertSerial(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to insert into
-    const record newRecord  // Record to insert as array of [Attribute, Value] pairs
+    const record *newRecord  // Record to insert as array of [Attribute, Value] pairs
 ) {
     // Check that the record is valid/missing no fields
-    if(newRecord.command_id == 0 || strlen(newRecord.raw_command) == 0 || strlen(newRecord.base_command) == 0 ||
-       strlen(newRecord.shell_type) == 0 || strlen(newRecord.timestamp) == 0 || strlen(newRecord.working_directory) == 0 ||
-       strlen(newRecord.user_name) == 0 || strlen(newRecord.host_name) == 0) {
+    if(newRecord->command_id == 0 || strlen(newRecord->raw_command) == 0 || strlen(newRecord->base_command) == 0 ||
+       strlen(newRecord->shell_type) == 0 || strlen(newRecord->timestamp) == 0 || strlen(newRecord->working_directory) == 0 ||
+       strlen(newRecord->user_name) == 0 || strlen(newRecord->host_name) == 0) {
         if (VERBOSE) {
             fprintf(stderr, "Invalid record: missing required fields\n");
         }
@@ -174,18 +175,18 @@ bool executeQueryInsertSerial(
         return false;
     }
     fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
-            newRecord.command_id,
-            newRecord.raw_command,
-            newRecord.base_command,
-            newRecord.shell_type,
-            newRecord.exit_code,
-            newRecord.timestamp,
-            newRecord.sudo_used,
-            newRecord.working_directory,
-            newRecord.user_id,
-            newRecord.user_name,
-            newRecord.host_name,
-            newRecord.risk_level);
+            newRecord->command_id,
+            newRecord->raw_command,
+            newRecord->base_command,
+            newRecord->shell_type,
+            newRecord->exit_code,
+            newRecord->timestamp,
+            newRecord->sudo_used,
+            newRecord->working_directory,
+            newRecord->user_id,
+            newRecord->user_name,
+            newRecord->host_name,
+            newRecord->risk_level);
     fclose(file);
 
     // Append the new record to engine->all_records in memory
@@ -203,7 +204,7 @@ bool executeQueryInsertSerial(
         }
         return false;
     }
-    *record_copy = newRecord;  // Copy the contents of newRecord (properly allocating memory outside function scope)
+    *record_copy = *newRecord;  // Copy the contents of newRecord (properly allocating memory outside function scope)
     engine->all_records[engine->num_records] = record_copy;
 
     // Increment the record count
@@ -216,13 +217,9 @@ bool executeQueryInsertSerial(
         // Insert the new record into the B+ tree for this indexed attribute
         node *root = engine->bplus_tree_roots[i];
         KEY_T key = extract_key_from_record(record_copy, indexed_attr);
-        if (root == NULL) {
-            root = startNewTree(key, (ROW_PTR) &newRecord);
-        } 
-        else {
-            // Insert into existing tree
-            root = insert(root, key, (ROW_PTR) &newRecord);
-        }
+        root = insert(root, key, (ROW_PTR)record_copy);
+        engine->bplus_tree_roots[i] = root;
+        
         if(root == NULL) {
             if (VERBOSE) {
                 fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s\n", indexed_attr);
@@ -286,9 +283,12 @@ struct engineS *initializeEngineSerial(
     for (int i = 0; i < num_indexes; i++) {
         // Update the indexed attributes and types for the engine
         engine->indexed_attributes[i] = strdup(indexed_attributes[i]);
-        engine->attribute_types[i] = mapFieldType(attribute_types[i]);
+        engine->attribute_types[i] = mapAttributeType(attribute_types[i]);
         // Build B+ tree index for each indexed attribute
-        engine->bplus_tree_roots[i] = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
+        bool success = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
+        if (!success) {
+            fprintf(stderr, "Failed to create index for attribute: %s\n", indexed_attributes[i]);
+        }
     }
 
     return engine;  // Return the initialized engine

@@ -1,17 +1,21 @@
 /* Skeleton for the Serial Implementation - uses the bplus serial engine and tokenizer to execute a provided SQL query */
 
+#define _POSIX_C_SOURCE 200809L  // Enable strdup
 #include "../../include/buildEngine-serial.h"
-#include "../../include/executeEngine-serial.h"
+#include <string.h>
 #define VERBOSE 1  // Essentially testing mode
 
+// Forward declaration
+FieldType mapAttributeType(int attributeType);
+
 // Creates a serial B+ tree from data file, returns the tree root
-bool makeIndexSerial(struct engineS *engine, const char *indexName, const int attributeType) {
+bool makeIndexSerial(struct engineS *engine, const char *indexName, int attributeType) {
     // Load all records from the engine's data source
     record **records = engine->all_records;
     int numRecords = engine->num_records;
     
     // Build the B+ tree from the records array
-    node *root = load_into_bplus_tree(records, numRecords);
+    node *root = loadIntoBplusTree(records, numRecords, indexName);
     if (VERBOSE && root == NULL) {
         fprintf(stderr, "Failed to load data into B+ tree\n");
     }
@@ -44,14 +48,8 @@ node *loadIntoBplusTree(record **records, int num_records, const char *attribute
         record *currentRecord = records[i];
         KEY_T key = extract_key_from_record(currentRecord, attributeName);
 
-        // Insert the record into the B+ tree using command_id as the key
-        if (root == NULL) {
-            root = startNewTree(key, (ROW_PTR)currentRecord);
-        } 
-        else {
-            // Insert into existing tree
-            root = insert(root, key, (ROW_PTR)currentRecord);
-        }
+        // Insert the record into the B+ tree using the key
+        root = insert(root, key, (ROW_PTR)currentRecord);
 
         // Validate insertion via printing (only in verbose mode)
         if (VERBOSE) {

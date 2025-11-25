@@ -28,6 +28,10 @@ TEST_BINS    := $(patsubst tests/%.c,$(TEST_BIN_DIR)/%,$(TEST_SRCS))
 ENGINE_SERIAL_SRCS := engine/serial/bplus-serial.c engine/recordSchema.c
 ENGINE_SERIAL_OBJS := $(ENGINE_SERIAL_SRCS:.c=.o)
 
+# Tokenizer sources
+TOKENIZER_SRCS := tokenizer/src/tokenizer.c
+TOKENIZER_OBJS := $(TOKENIZER_SRCS:.c=.o)
+
 .PHONY: all clean test show
 
 all: $(ENGINE_SERIAL_OBJS) $(QPE_OBJS) $(QPE_EXES) $(TEST_BINS)
@@ -48,11 +52,20 @@ $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS)
 	@mkdir -p $(TEST_BIN_DIR)
 	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
+# Special case: test_tokenizer_new needs tokenizer objects
+$(TEST_BIN_DIR)/test_tokenizer_new: tests/test_tokenizer_new.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
+	@mkdir -p $(TEST_BIN_DIR)
+	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
+
 # Engine object build rule
 engine/serial/%.o: engine/serial/%.c include/bplus-serial.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 engine/%.o: engine/%.c include/recordSchema.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Tokenizer object build rule
+tokenizer/src/%.o: tokenizer/src/%.c include/sql.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Convenience target to run all tests sequentially
@@ -71,7 +84,7 @@ show:
 	@echo "ENGINE_SERIAL_SRCS = $(ENGINE_SERIAL_SRCS)"
 
 clean:
-	$(RM) $(QPE_EXES) $(QPE_OBJS) $(TEST_BINS) $(ENGINE_SERIAL_OBJS)
+	$(RM) $(QPE_EXES) $(QPE_OBJS) $(TEST_BINS) $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
 	@echo "Cleaned build artifacts."
 
 # Default goal if user just runs `make` without target

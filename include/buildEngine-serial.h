@@ -80,4 +80,18 @@ record **getAllRecordsFromFile(const char *filepath, int *num_records);
  */
 record *getRecordFromLine(char *line);
 
+/*
+ * mapAttributeType: Maps integer type code to FieldType enum
+ * 
+ * Converts an integer representation (0, 1, 2, 3) to a FieldType enum value.
+ * Used for type mapping when building indexes.
+ * 
+ * Parameters:
+ *   attributeType - integer type code (0=UINT64, 1=INT, 2=STRING, 3=BOOL)
+ * 
+ * Returns:
+ *   Corresponding FieldType enum value, or -1 for invalid type
+ */
+FieldType mapAttributeType(int attributeType);
+
 #endif // BUILDTREE_SERIAL_H

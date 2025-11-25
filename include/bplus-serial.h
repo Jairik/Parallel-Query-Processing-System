@@ -50,7 +50,7 @@ void printTree(node *const root);
 void printLeaves(node *const root);
 int height(node *const root);
 int pathToLeaves(node *const root, node *child);
-void findAndPrint(node *const root, KEY_T key, bool verbose);
+void findAndPrint(node *const root, KEY_T key);
 void findAndPrintRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose);
 int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
               KEY_T returned_keys[], ROW_PTR returned_pointers[]);

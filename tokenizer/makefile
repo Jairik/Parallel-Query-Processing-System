@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Iinclude -Wall -g
+CFLAGS=-I../include -Wall -g
 
 all: sql
 

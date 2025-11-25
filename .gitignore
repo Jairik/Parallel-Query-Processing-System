@@ -2,3 +2,5 @@
 *.o
 QPESeq
 build/tests/bplus-serial-test
+build/tests/test_tokenizer_new
+*.o

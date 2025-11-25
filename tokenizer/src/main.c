@@ -3,7 +3,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include "../sql.h"
+#include "sql.h"
 
 // Helper: check if file exists
 int file_exists(const char *path) {

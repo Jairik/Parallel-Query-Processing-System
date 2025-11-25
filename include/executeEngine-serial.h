@@ -15,6 +15,9 @@
  *    (`all_records`) for faster access, with B+ tree indexes used for optimized lookups.
  */
 
+#ifndef EXECUTE_ENGINE_SERIAL_H
+#define EXECUTE_ENGINE_SERIAL_H
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +36,7 @@ struct engineS {
     record **all_records; // Array of all records in the table (for full table scans on non-indexed queries and for assigning row pointers)
     int num_records; // Total number of records in the table
     char *datafile; // Path to the data file
-} engineS;
+};
 
 /* WHERE clause struct to hold filtering conditions */
 /* 
@@ -47,7 +50,7 @@ struct whereClauseS {
     int value_type;         // Type of value (0 = integer, 1 = string, 2 = boolean)
     struct whereClauseS *next;  // Pointer to the next condition in the chain (or NULL)
     const char *logical_op; // Logical operator connecting to next condition ("AND", "OR")
-} whereClauseS;
+};
 
 // Function pointers for non-numerical comparisons
 typedef bool (*compare_func_t)(const char *, const char *);  // Comparing strings
@@ -126,3 +129,5 @@ bool addAttributeIndexSerial(
     const char *attributeName,  // Name of the attribute to index
     int attributeType  // Attribute type to index (0 = integer, 1 = string, 2 = boolean)
 );
+
+#endif // EXECUTE_ENGINE_SERIAL_H

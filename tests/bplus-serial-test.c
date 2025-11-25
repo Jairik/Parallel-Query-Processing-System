@@ -35,7 +35,7 @@ int main() {
 
     // Testing lookups
     printf("\n--- Single key lookup: key 15 ---\n");
-    findAndPrint(root, make_key_u64(15), false);
+    findAndPrint(root, make_key_u64(15));
     
     printf("\n--- Range query: keys 10-30 (should find 15, 25) ---\n");
     findAndPrintRange(root, make_key_u64(10), make_key_u64(30), false);
