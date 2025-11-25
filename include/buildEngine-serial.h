@@ -22,11 +22,11 @@
  * Parameters:
  *   engine - pointer to the engine structure containing all_records
  *   indexName - name identifier for this index
- * 
+ *   attributeType - type of the attribute to index (0 = Uinteger, 1= int, 2 = string, 3 = boolean)
  * Returns:
  *   Boolean of success (true) or failure (false) of index creation
  */
-bool makeIndexSerial(struct engineS *engine, const char *indexName);
+bool makeIndexSerial(struct engineS *engine, const char *indexName, int attributeType);
 
 /*
  * loadIntoBplusTree: Loads an array of records into a B+ tree

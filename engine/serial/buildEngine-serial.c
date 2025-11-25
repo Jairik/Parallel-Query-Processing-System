@@ -5,7 +5,7 @@
 #define VERBOSE 1  // Essentially testing mode
 
 // Creates a serial B+ tree from data file, returns the tree root
-bool makeIndexSerial(struct engineS *engine, const char *indexName) {
+bool makeIndexSerial(struct engineS *engine, const char *indexName, const int attributeType) {
     // Load all records from the engine's data source
     record **records = engine->all_records;
     int numRecords = engine->num_records;
@@ -20,6 +20,8 @@ bool makeIndexSerial(struct engineS *engine, const char *indexName) {
     engine->bplus_tree_roots[engine->num_indexes] = root;
     engine->indexed_attributes[engine->num_indexes] = strdup(indexName);
     engine->num_indexes += 1;
+    engine->attribute_types[engine->num_indexes-1] = mapAttributeType(attributeType);
+
     return (engine->bplus_tree_roots[engine->num_indexes-1]) != NULL;  // Return success status
 }
 
@@ -152,4 +154,20 @@ record *getRecordFromLine(char *line){
     if (token != NULL) new_record->risk_level = atoi(token);
 
     return new_record;  // Return the fully populated record
+}
+
+/* Helper to map an int representation (0, 1, 2, 3) to a FieldType object for storing */
+FieldType mapAttributeType(int attributeType) {
+    switch (attributeType) {
+        case 0:
+            return FIELD_UINT64;
+        case 1:
+            return FIELD_INT;
+        case 2:
+            return FIELD_STRING;
+        case 3:
+            return FIELD_BOOL;
+        default:
+            return -1; // Invalid type
+    }
 }

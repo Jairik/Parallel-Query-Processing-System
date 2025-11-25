@@ -213,11 +213,22 @@ bool executeQueryInsertSerial(
     for (int i = 0; i < engine->num_indexes; i++) {
         const char *indexed_attr = engine->indexed_attributes[i];
         
-        // TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
-        // Insert the new record into the B+ tree index for indexed_attr
-        // Determine how to extract the key from newRecord based on indexed_attr
-        // and attach the record pointer accordingly
-        // Then call the appropriate B+ tree insertion function
+        // Insert the new record into the B+ tree for this indexed attribute
+        node *root = engine->bplus_tree_roots[i];
+        KEY_T key = extract_key_from_record(record_copy, indexed_attr);
+        if (root == NULL) {
+            root = startNewTree(key, (ROW_PTR) &newRecord);
+        } 
+        else {
+            // Insert into existing tree
+            root = insert(root, key, (ROW_PTR) &newRecord);
+        }
+        if(root == NULL) {
+            if (VERBOSE) {
+                fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s\n", indexed_attr);
+            }
+            return false;
+        }
     }
 
     return true;  // Placeholder for now
@@ -241,7 +252,7 @@ int executeQueryDeleteSerial(
 struct engineS *initializeEngineSerial(
     int num_indexes,  // Total number of indexes to start 
     const char *indexed_attributes[],  // Names of indexed attributes
-    const int attribute_types[],   // Types of indexed attributes (0 = integer, 1 = string, 2 = boolean)
+    const int attribute_types[],   // Types of indexed attributes (0 = uint, 1 = int, 2 = string, 3 = boolean)
     const char *datafile,  // Path to the data file
     const char *tableName  // Name of the table
 ) {
@@ -257,7 +268,7 @@ struct engineS *initializeEngineSerial(
     engine->num_indexes = num_indexes;
     engine->bplus_tree_roots = (node **)malloc(num_indexes * sizeof(node *));
     engine->indexed_attributes = (char **)malloc(num_indexes * sizeof(char *));
-    engine->attribute_types = (int *)malloc(num_indexes * sizeof(int));
+    engine->attribute_types = (FieldType *)malloc(num_indexes * sizeof(FieldType));
     engine->all_records = NULL; // Initialize to NULL, will be set later
     engine->num_records = 0; // Initialize record count to 0
     if (engine->bplus_tree_roots == NULL || engine->indexed_attributes == NULL || engine->attribute_types == NULL) {
@@ -275,9 +286,9 @@ struct engineS *initializeEngineSerial(
     for (int i = 0; i < num_indexes; i++) {
         // Update the indexed attributes and types for the engine
         engine->indexed_attributes[i] = strdup(indexed_attributes[i]);
-        engine->attribute_types[i] = attribute_types[i];
+        engine->attribute_types[i] = mapFieldType(attribute_types[i]);
         // Build B+ tree index for each indexed attribute
-        engine->bplus_tree_roots[i] = makeIndexSerial(engine, indexed_attributes[i]);
+        engine->bplus_tree_roots[i] = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
     }
 
     return engine;  // Return the initialized engine
@@ -307,22 +318,16 @@ bool addAttributeIndexSerial(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table name
     const char *attributeName,  // Name of the attribute to index
-    int attributeType  // Attribute type to index (0 = integer, 1 = string, 2 = boolean)
+    int attributeType  // Attribute type to index (0 = Uinteger, 1= = int, 2 = string, 3 = boolean)
 ) {
     // Create a new B+ tree index for the specified attribute
-    node *new_index_root = makeIndexSerial(engine, attributeName);
-    if (new_index_root == NULL) {
+    bool makeIndexSuccess = makeIndexSerial(engine, attributeName, attributeType);
+    if (makeIndexSuccess) {
         if (VERBOSE) {
             fprintf(stderr, "Failed to create B+ tree index for attribute: %s\n", attributeName);
         }
         return false;  // Failed to create index
     }
-
-    // Append the new index root to the engine's array of B+ tree roots
-    engine->bplus_tree_roots[engine->num_indexes] = new_index_root;
-    engine->indexed_attributes[engine->num_indexes] = strdup(attributeName);
-    engine->attribute_types[engine->num_indexes] = attributeType;
-    engine->num_indexes += 1;  // Increment the number of indexes
 
     return true;  // Successfully added the index
 }

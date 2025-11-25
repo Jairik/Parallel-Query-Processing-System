@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "logType.h"
+#include "recordSchema.h"
 
 /* Struct for the engine */
 /* Holds the state of the database engine, including all data records and active indexes. */
@@ -28,7 +29,7 @@ struct engineS {
     node **bplus_tree_roots; // Array of roots for all B+ tree indexes
     int num_indexes; // Number of indexes
     char **indexed_attributes; // Names of indexed attributes
-    int *attribute_types; // Types of indexed attributes (0 = integer, 1 = string, 2 = boolean)
+    FieldType *attribute_types; // Types of indexed attributes (from record schema)
     record **all_records; // Array of all records in the table (for full table scans on non-indexed queries and for assigning row pointers)
     int num_records; // Total number of records in the table
     char *datafile; // Path to the data file
