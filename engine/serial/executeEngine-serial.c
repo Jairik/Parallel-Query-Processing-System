@@ -242,7 +242,7 @@ int executeQueryDeleteSerial(
     // Identify records matching the WHERE clause conditions
     // Remove matching records from engine->all_records and update the array accordingly
     // Update any relevant B+ tree indexes to remove references to deleted records
-    return 0;  // Placeholder for now
+    return 0;  // Placeholder for now (returns number of deleted records)
 }
 
 /* Initialize the engine, returning a pointer to the engine object */
@@ -330,4 +330,70 @@ bool addAttributeIndexSerial(
     }
 
     return true;  // Successfully added the index
+}
+
+/* Helper function for determining if a given attribute is indexed */
+int isAttributeIndexed(struct engineS *engine, const char *attributeName) {
+    for (int i = 0; i < engine->num_indexes; i++) {
+        if (strcmp(engine->indexed_attributes[i], attributeName) == 0) {
+            return i;  // Return the found attribute's index
+        }
+    }
+    return -1;  // Attribute is not indexed, return -1 as signal value
+}
+
+/* Performs a linear search when no index is found (fallback) */
+record **linearSearchRecords(struct engineS *engine, struct whereClauseS *whereClause, int *matchingRecords) {
+    // Allocate space for results array
+    record **results = malloc(sizeof(record *));
+    *matchingRecords = 0;
+
+    // Iterate through all records and apply WHERE clause filtering
+    for(int i = 0; i < engine->num_records; i++) {
+        record *currentRecord = engine->all_records[i];
+        bool matches = true;
+
+        // Evaluate each condition in the WHERE clause
+        struct whereClauseS *currentCondition = whereClause;
+        while (currentCondition != NULL) {
+            // Create comparison function for this condition
+            void *valuePtr;
+            int valueType = currentCondition->value_type;
+            if (valueType == 0) { // Integer
+                int *intValue = malloc(sizeof(int));
+                *intValue = atoi(currentCondition->value);
+                valuePtr = intValue;
+            } else if (valueType == 1) { // String
+                valuePtr = (void *)currentCondition->value;
+            } else if (valueType == 2) { // Boolean
+                bool *boolValue = malloc(sizeof(bool));
+                *boolValue = (strcmp(currentCondition->value, "true") == 0) ? true : false;
+                valuePtr = boolValue;
+            } else {
+                matches = false; // Unsupported type
+                break;
+            }
+
+            where_condition_func conditionFunc = create_where_condition(currentCondition->attribute, currentCondition->operator, valuePtr);
+            if (conditionFunc == NULL || !conditionFunc((void *)currentRecord, valuePtr)) {
+                matches = false; // Condition not met
+            }
+
+            // Free allocated memory for valuePtr if needed
+            if (valueType == 0) free(valuePtr);
+            if (valueType == 2) free(valuePtr);
+
+            currentCondition = currentCondition->next; // Move to next condition
+        }
+
+        // If record matches all conditions, add to results
+        if (matches) {
+            results = realloc(results, (*matchingRecords + 1) * sizeof(record *));
+            results[*matchingRecords] = currentRecord;
+            (*matchingRecords)++;
+        }
+    }
+
+    // Return the array of matching records
+    return results;
 }

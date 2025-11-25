@@ -1,19 +1,4 @@
 /* Serial Execute Engine */
-/* 
- * This header defines the interface for the serial query execution engine.
- * 
- * REFACTORING NOTES:
- * The API has been redesigned to move away from passing large query structs (e.g., querySelectS)
- * and instead uses direct function arguments for better flexibility and performance.
- * 
- * Key Changes:
- * 1. Deconstructed Query Structs: Functions like executeQuerySelectSerial now take individual 
- *    parameters (selectItems, tableName, whereClause) instead of a single struct.
- * 2. Dynamic WHERE Clauses: Introduced `struct whereClauseS`, a linked list structure that 
- *    allows for complex filtering conditions (AND/OR logic) to be constructed dynamically.
- * 3. In-Memory Data Loading: The engine now operates on an in-memory array of records 
- *    (`all_records`) for faster access, with B+ tree indexes used for optimized lookups.
- */
 
 #ifndef EXECUTE_ENGINE_SERIAL_H
 #define EXECUTE_ENGINE_SERIAL_H
@@ -61,7 +46,7 @@ typedef bool (*compare_func_int_t)(const bool, const bool);  // Comparing boolea
  * Executes a SELECT query.
  * - selectItems: Array of column names to retrieve.
  * - whereClause: Linked list of filtering conditions.
- * Returns a formatted string containing the query results.
+ * Returns TODO - SOME EASY WAY TO DO THIS IDRK FR.
  */
 char *executeQuerySelectSerial(
     struct engineS *engine,        // Engine object
@@ -128,6 +113,19 @@ bool addAttributeIndexSerial(
     const char *tableName,  // Table name
     const char *attributeName,  // Name of the attribute to index
     int attributeType  // Attribute type to index (0 = integer, 1 = string, 2 = boolean)
+);
+
+// Helper function that returns if a given attribute is already indexed, returning the index or -1 if not found
+int isAttributeIndexed(
+    struct engineS *engine,  // Constant engine object
+    const char *attributeName  // Name of the attribute to check
+);
+
+// Helper function that performs a linear search through all records based on the WHERE clause
+record **linearSearchRecords(
+    struct engineS *engine,  // Constant engine object
+    struct whereClauseS *whereClause,  // WHERE clause
+    int *matchingRecords  // Output parameter for number of matching records
 );
 
 #endif // EXECUTE_ENGINE_SERIAL_H
