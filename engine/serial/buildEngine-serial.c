@@ -23,6 +23,7 @@ node *makeIndexSerial(struct engineS *engine, const char *indexName) {
  * Parameters:
  *   records - array of record pointers
  *   num_records - number of records in the array
+ *   attributeName - name of the attribute to index
  * Returns:
  *  root of the B+ tree
 */
@@ -32,22 +33,15 @@ node *loadIntoBplusTree(record **records, int num_records) {
     
     // Iterate through each record and insert into the B+ tree
     for (int i = 0; i < num_records; i++) {
-        record *current_record = records[i];
+        record *currentRecord = records[i];
         
         // Insert the record into the B+ tree using command_id as the key
         if (root == NULL) {
-            root = startNewTree(current_record->command_id, current_record);
+            root = startNewTree(currentRecord->command_id, currentRecord);
         } 
         else {
-            // TODO TODO TODO TODO TODO Modify the B+ Implementation Directly to solve this issue
-            root = insert(root, current_record->command_id, 0);
-            // Note: insert creates a new record internally, so we need to replace it
-            // with our actual record pointer
-            record *found = find(root, current_record->command_id, false, NULL);
-            if (found != NULL) {
-                // Copy the actual record data over
-                memcpy(found, current_record, sizeof(record));
-            }
+            // Insert into existing tree
+            root = insert(root, currentRecord->command_id, (ROW_PTR)currentRecord);
         }
 
         // Validate insertion via printing (only in verbose mode)

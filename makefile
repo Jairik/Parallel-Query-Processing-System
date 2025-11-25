@@ -25,7 +25,7 @@ TEST_BIN_DIR := build/tests
 TEST_BINS    := $(patsubst tests/%.c,$(TEST_BIN_DIR)/%,$(TEST_SRCS))
 
 # Serial engine sources required for linking (only the modern B+ tree for now)
-ENGINE_SERIAL_SRCS := engine/serial/bplus-serial.c
+ENGINE_SERIAL_SRCS := engine/serial/bplus-serial.c engine/recordSchema.c
 ENGINE_SERIAL_OBJS := $(ENGINE_SERIAL_SRCS:.c=.o)
 
 .PHONY: all clean test show
@@ -50,6 +50,9 @@ $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS)
 
 # Engine object build rule
 engine/serial/%.o: engine/serial/%.c include/bplus-serial.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+engine/%.o: engine/%.c include/recordSchema.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Convenience target to run all tests sequentially

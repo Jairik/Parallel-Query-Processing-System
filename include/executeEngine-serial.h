@@ -76,7 +76,7 @@ char *executeQuerySelectSerial(
 bool executeQueryInsertSerial(
     struct engineS *engine,              // Engine object
     const char *tableName,               // Table to insert into
-    const record r,       // Record to insert as array of [Attribute, Value] pairs
+    const record *r       // Record to insert
 );
 
 // Update function - main entry point for UPDATE queries. Returns number of rows updated
@@ -104,7 +104,7 @@ int executeQueryDeleteSerial(
     struct engineS *engine,              // Engine object
     const char *tableName,               // Table to delete from
     struct whereClauseS *whereClause     // WHERE clause (NULL for all rows)
-);  
+);
 
 // Initialize the engine, returning a pointer to the engine object
 struct engineS *initializeEngineSerial(

@@ -9,13 +9,31 @@
 #define ORDER 3
 
 /* --- Configurable key + value types --- */
-typedef uint64_t KEY_T;   // Change this to whatever key type you want.
-typedef void *ROW_PTR;    // Pointer to the table row.
 
-// Forward declare node struct
-typedef struct node node;
+// Type of the key used for indexing.
+typedef enum {
+    KEY_INT,
+    KEY_UINT64,
+    KEY_BOOL,
+    KEY_STRING
+} KeyType;
+
+// Generic union type to hold different key types
+typedef struct {
+    KeyType type;
+    union {
+        uint64_t u64;
+        int i32;
+        bool b;
+        const char *str;
+    } v;
+} KEY_T;
+
+typedef void *ROW_PTR;  // Pointer to the table row.
+
 
 // Node structure for the B+ Tree.
+typedef struct node node;
 struct node {
     void **pointers;
     KEY_T *keys;
@@ -37,5 +55,8 @@ void findAndPrintRange(node *const root, KEY_T key_start, KEY_T key_end, bool ve
 int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
               KEY_T returned_keys[], ROW_PTR returned_pointers[]);
 node *findLeaf(node *const root, KEY_T key, bool verbose);
+
+// Key comparison function
+int compare_keys(const KEY_T *key1, const KEY_T *key2);
 
 #endif // BPLUS_SERIAL_H

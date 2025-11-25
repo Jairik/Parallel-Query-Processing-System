@@ -5,6 +5,8 @@
 
 #include "bplus-serial.h"
 #include "executeEngine-serial.h"
+#include "logType.h"  // record struct
+#include "recordSchema.h"  // record schema helpers
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>

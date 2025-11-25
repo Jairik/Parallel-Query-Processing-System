@@ -3,6 +3,11 @@
 #ifndef LOGTYPE_H
 #define LOGTYPE_H
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <string.h> // for strcmp in get_field_info
+
+// Record structure representing a command log entry
 typedef struct record {
     unsigned long long command_id; // Unique key for the record
     char raw_command[512]; // Full command string
