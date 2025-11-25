@@ -4,8 +4,8 @@
 #include "../../include/executeEngine-serial.h"
 #define VERBOSE 1  // Essentially testing mode
 
-// Main function to create a serial B+ tree from data file, returns the tree root
-node *makeIndexSerial(struct engineS *engine, const char *indexName) {
+// Creates a serial B+ tree from data file, returns the tree root
+bool makeIndexSerial(struct engineS *engine, const char *indexName) {
     // Load all records from the engine's data source
     record **records = engine->all_records;
     int numRecords = engine->num_records;
@@ -16,7 +16,11 @@ node *makeIndexSerial(struct engineS *engine, const char *indexName) {
         fprintf(stderr, "Failed to load data into B+ tree\n");
     }
 
-    return root;  // Return the root of the constructed B+ tree
+    // Add to the engine's known tree roots
+    engine->bplus_tree_roots[engine->num_indexes] = root;
+    engine->indexed_attributes[engine->num_indexes] = strdup(indexName);
+    engine->num_indexes += 1;
+    return (engine->bplus_tree_roots[engine->num_indexes-1]) != NULL;  // Return success status
 }
 
 /* Loads in all data from the array of records into a B+ tree
@@ -27,21 +31,24 @@ node *makeIndexSerial(struct engineS *engine, const char *indexName) {
  * Returns:
  *  root of the B+ tree
 */
-node *loadIntoBplusTree(record **records, int num_records) {
+node *loadIntoBplusTree(record **records, int num_records, const char *attributeName) {
     // Instantiate the B+ tree root
     node *root = NULL;
     
     // Iterate through each record and insert into the B+ tree
     for (int i = 0; i < num_records; i++) {
-        record *currentRecord = records[i];
         
+        // Extract the current record as a key
+        record *currentRecord = records[i];
+        KEY_T key = extract_key_from_record(currentRecord, attributeName);
+
         // Insert the record into the B+ tree using command_id as the key
         if (root == NULL) {
-            root = startNewTree(currentRecord->command_id, currentRecord);
+            root = startNewTree(key, (ROW_PTR)currentRecord);
         } 
         else {
             // Insert into existing tree
-            root = insert(root, currentRecord->command_id, (ROW_PTR)currentRecord);
+            root = insert(root, key, (ROW_PTR)currentRecord);
         }
 
         // Validate insertion via printing (only in verbose mode)

@@ -24,9 +24,9 @@
  *   indexName - name identifier for this index
  * 
  * Returns:
- *   Pointer to the root node of the constructed B+ tree, or NULL on failure
+ *   Boolean of success (true) or failure (false) of index creation
  */
-node *makeIndexSerial(struct engineS *engine, const char *indexName);
+bool makeIndexSerial(struct engineS *engine, const char *indexName);
 
 /*
  * loadIntoBplusTree: Loads an array of records into a B+ tree
@@ -36,13 +36,14 @@ node *makeIndexSerial(struct engineS *engine, const char *indexName);
  * incrementally with automatic splitting when nodes become full.
  * 
  * Parameters:
+ *   engine - pointer to the engine structure (for attribute info)
  *   records - array of record pointers to insert
  *   num_records - number of records in the array
  * 
  * Returns:
  *   Pointer to the root node of the populated B+ tree, or NULL on error
  */
-node *loadIntoBplusTree(record **records, int num_records);
+node *loadIntoBplusTree(record **records, int num_records, const char *attributeName);
 
 /*
  * getAllRecordsFromFile: Loads CSV file into memory as record array
