@@ -23,6 +23,20 @@ struct engineS {
     char *datafile; // Path to the data file
 };
 
+/* Result set - The results of any given query */
+struct resultSet {
+    int numRecords;  // Number of rows found/affected
+    int numColumns;  // Number of columns selected/affected (NULL or 0 if not applicable)
+    char **columnNames;  // Array of column names (headers/attribute names)
+    FieldType *columnTypes;  // Array of column types (corresponding to columnNames)
+    char ***data;  // 2D Matrix of result data as strings: data[row][col]
+    double queryTime;  // Time taken to execute the query
+    bool success;  // Whether the query was successful
+} resultSet;
+
+/* Frees the memory allocated for a result set */
+void freeResultSet(struct resultSetS *result);
+
 /* WHERE clause struct to hold filtering conditions */
 /* 
  * Represents a single condition in a WHERE clause (e.g., "risk_level > 2").
@@ -41,14 +55,14 @@ struct whereClauseS {
 typedef bool (*compare_func_t)(const char *, const char *);  // Comparing strings
 typedef bool (*compare_func_int_t)(const bool, const bool);  // Comparing booleans
 
-// Select function - main entry point for SELECT queries. Returns results as a string
+// Select function - main entry point for SELECT queries. Returns a ResultSet
 /* 
  * Executes a SELECT query.
  * - selectItems: Array of column names to retrieve.
  * - whereClause: Linked list of filtering conditions.
- * Returns TODO - SOME EASY WAY TO DO THIS IDRK FR.
+ * Returns a pointer to a ResultSet containing the selected columns and data.
  */
-char *executeQuerySelectSerial(
+struct resultSetS *executeQuerySelectSerial(
     struct engineS *engine,        // Engine object
     const char **selectItems,      // Attributes to select (NULL for all)
     int numSelectItems,            // Number of attributes to select

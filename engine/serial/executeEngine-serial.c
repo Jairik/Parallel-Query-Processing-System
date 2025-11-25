@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L  // Enable strdup
 #include "../../include/buildEngine-serial.h"
 #include "../../include/executeEngine-serial.h"
+#include <time.h>  // Timing
 #define VERBOSE 1
 
 // Function pointer type for WHERE condition evaluation
@@ -134,7 +135,16 @@ where_condition_func create_where_condition(const char *attribute, const char *o
     return NULL;
 }
 
-/* Main functionality for a SELECT query */
+/* Main functionality for a SELECT query
+ * Parameters:
+*   engine - constant engine object
+*   selectItems - attributes to select (SELECT clause)
+*   numItems - number of attributes to select (NULL for all)
+*   tableName - table to query from (FROM clause)
+*   whereClause - WHERE clause (NULL if no filtering)
+* Returns:
+*    A 
+*/
 char *executeQuerySelectSerial(
     struct engineS *engine,  // Constant engine object
     const char *selectItems[],  // Attributes to select (SELECT clause)
@@ -147,10 +157,71 @@ char *executeQuerySelectSerial(
     // Check if any indexed attributes are in the WHERE clause
     // If indexed attributes are present, use the corresponding B+ tree index to quickly locate matching records
     // If no indexed attributes are present, perform a full table scan of engine->all_records
+
+    // Flags to track if any indexed attributes are in the WHERE clause
+    bool anyIndexExists = false;  // Flag for quick fallback to full table scan
+    bool indexExists[engine->num_indexes];  // Track which indexes exist for WHERE attributes
+
+    // Allocate space for matching records and result struct
+    record **matchingRecords = (record **)malloc(engine->num_records * sizeof(record *));
+    struct resultSet *queryResults = (struct resultSet *)malloc(sizeof(struct resultSet));
+    int matchCount = 0;
+
+    // Get all indexed attributes in the WHERE clause, using the B+ tree indexes where possible
+    // NOTE: THIS IS ONLY A PLACEHOLDER. CHECK TOKENIZER BEHAVIOR FOR WHERE CLAUSE PARSING
+    struct whereClauseS *wc = whereClause;
+    while (wc != NULL) {
+        for (int i = 0; i < engine->num_indexes; i++) {
+            if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
+                anyIndexExists = true;
+                indexExists[i] = true;
+
+                // TODO - USE B+ TREE TO GET MATCHING RECORDS FOR THIS ATTRIBUTE & WHERE CLAUSE
+            }
+            else {
+                indexExists[i] = false;
+            }
+        }
+        wc = wc->next;
+    }
+
+    // Perform index scans on all indexed attributes in the WHERE clause. For non-indexed attributes, fall back to linear search
+    // TODO - Filter records based on WHERE clause using indexes where possible
+
+
+    // Fallback: If no index exists for a WHERE clause attributes, perform a full table scan on currently known attributes
+    clock_t start = clock();  // Start a timer
+    
+    // No indexes exist for any WHERE attributes, search entire table
+    if(!anyIndexExists){
+        matchingRecords = linearSearchRecords(engine->all_records, whereClause, &matchCount);
+    }
+    // There were some indexes in the WHERE clause, so we can use the known matching records to reduce linear search
+    else{
+        matchingRecords = linearSearchRecords(matchingRecords, whereClause, &matchCount);
+    }
+    double time_taken = ((double)clock() - start) / CLOCKS_PER_SEC;  // Time in seconds
+    if (VERBOSE) {
+        printf("Linear search took %f seconds\n", time_taken);
+    }
+
+    // Extract the requested attributes from matching records and format the result
+
+
+    // Assign the results to a resultSet struct
+
+
     return NULL;  // Placeholder for now
 }
 
-/* Main functionality for INSERT logic */
+/* Main functionality for INSERT logic
+ * Parameters:
+ *   engine - constant engine object
+ *   tableName - name of the table
+ *   newRecord - record to insert as Record type
+ * Returns:
+ *   success/failure
+*/
 bool executeQueryInsertSerial(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to insert into
@@ -174,6 +245,7 @@ bool executeQueryInsertSerial(
         }
         return false;
     }
+    // Write the new record as a CSV line
     fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
             newRecord->command_id,
             newRecord->raw_command,
@@ -231,7 +303,14 @@ bool executeQueryInsertSerial(
     return true;  // Placeholder for now
 }
 
-/* Main functionality for DELETE logic */
+/* Main functionality for DELETE logic
+ * Parameters:
+ *   engine - constant engine object
+ *   tableName - name of the table
+ *   whereClause - WHERE clause (NULL for all rows)
+ * Returns:
+ *   number of deleted records
+ */
 int executeQueryDeleteSerial(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to delete from
@@ -245,7 +324,16 @@ int executeQueryDeleteSerial(
     return 0;  // Placeholder for now (returns number of deleted records)
 }
 
-/* Initialize the engine, returning a pointer to the engine object */
+/* Initialize the engine, allocating space for default values, loading indexes, and loading the data
+ * Parameters:
+ *   num_indexes - number of indexes to create
+ *   indexed_attributes - names of indexed attributes
+ *   attribute_types - types of indexed attributes
+ *   datafile - path to the data file
+ *   tableName - name of the table
+ * Returns:
+ *   pointer to initialized engine struct 
+*/
 struct engineS *initializeEngineSerial(
     int num_indexes,  // Total number of indexes to start 
     const char *indexed_attributes[],  // Names of indexed attributes
