@@ -7,8 +7,10 @@
 // Function pointer type for WHERE condition evaluation
 typedef bool (*where_condition_func)(void *record, void *value);
 
-// Skeleton function to create a WHERE condition function pointer
 // Helper macros for generating comparison functions
+// These macros create type-specific comparison functions for different fields
+// CMP_NUM handles numeric types (int, unsigned long long, bool)
+// CMP_STR handles string types using strcmp
 #define CMP_NUM(field, type, opname, op) \
     bool field##_##opname(void *r, void *v) { \
         return ((record *)r)->field op (*(type *)v); \
@@ -20,6 +22,9 @@ typedef bool (*where_condition_func)(void *record, void *value);
     }
 
 // Generate comparison functions for supported fields
+// Each block generates a set of functions (eq, neq, gt, lt, gte, lte) for a specific field
+// These functions are used by the query engine to evaluate WHERE clauses
+
 // command_id (unsigned long long)
 CMP_NUM(command_id, unsigned long long, eq, ==)
 CMP_NUM(command_id, unsigned long long, neq, !=)
@@ -74,7 +79,9 @@ CMP_NUM(sudo_used, bool, eq, ==)
 CMP_NUM(sudo_used, bool, neq, !=)
 
 
-// Skeleton function to create a WHERE condition function pointer
+// Factory function to create a WHERE condition function pointer
+// Takes an attribute name, operator, and value, and returns the appropriate comparison function
+// This allows the query engine to dynamically select the correct comparison logic at runtime
 where_condition_func create_where_condition(const char *attribute, const char *operator, void *value) {
     if (strcmp(attribute, "command_id") == 0) {
         if (strcmp(operator, "=") == 0) return command_id_eq;
@@ -132,7 +139,7 @@ char *executeQuerySelectSerial(
     const char *selectItems[],  // Attributes to select (SELECT clause)
     int numItems,  // Number of attributes to select (NULL for all)
     const char *tableName,  // Table to query from (FROM clause)
-    compare_func_t *whereFunctionPointers  // List of Function pointers for WHERE clause filtering
+    struct whereClauseS *whereClause  // WHERE clause (NULL if no filtering)
 ) {
     // TODO - IMPLEMENT LOGIC
     // Requirements:
@@ -146,14 +153,73 @@ char *executeQuerySelectSerial(
 bool executeQueryInsertSerial(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to insert into
-    const char *(*insertItems)[2],  // Array of attribute-value pairs to insert
-    int numInsertItems  // Number of attribute-value pairs
+    const record newRecord  // Record to insert as array of [Attribute, Value] pairs
 ) {
-    // TODO - IMPLEMENT LOGIC
-    // Requirements:
-    // Create a new record struct and populate it with the provided attribute-value pairs
-    // Append the new record to engine->all_records, resizing the array as needed
+    // Check that the record is valid/missing no fields
+    if(newRecord.command_id == 0 || strlen(newRecord.raw_command) == 0 || strlen(newRecord.base_command) == 0 ||
+       strlen(newRecord.shell_type) == 0 || strlen(newRecord.timestamp) == 0 || strlen(newRecord.working_directory) == 0 ||
+       strlen(newRecord.user_name) == 0 || strlen(newRecord.host_name) == 0) {
+        if (VERBOSE) {
+            fprintf(stderr, "Invalid record: missing required fields\n");
+        }
+        return false;
+    }
+
+    // Append the new record to the end of the data file (as a CSV)
+    FILE *file = fopen(engine->datafile, "a");
+    if (file == NULL) {
+        if (VERBOSE) {
+            fprintf(stderr, "Failed to open data file for appending: %s\n", engine->datafile);
+        }
+        return false;
+    }
+    fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
+            newRecord.command_id,
+            newRecord.raw_command,
+            newRecord.base_command,
+            newRecord.shell_type,
+            newRecord.exit_code,
+            newRecord.timestamp,
+            newRecord.sudo_used,
+            newRecord.working_directory,
+            newRecord.user_id,
+            newRecord.user_name,
+            newRecord.host_name,
+            newRecord.risk_level);
+    fclose(file);
+
+    // Append the new record to engine->all_records in memory
+    engine->all_records = (record **)realloc(engine->all_records, (engine->num_records + 1) * sizeof(record *));
+    if (engine->all_records == NULL) {
+        if (VERBOSE) {
+            fprintf(stderr, "Memory reallocation failed for all_records\n");
+        }
+        return false;
+    }
+    record *record_copy = (record *)malloc(sizeof(record));
+    if (record_copy == NULL) {
+        if (VERBOSE) {
+            fprintf(stderr, "Memory allocation failed for new record\n");
+        }
+        return false;
+    }
+    *record_copy = newRecord;  // Copy the contents of newRecord (properly allocating memory outside function scope)
+    engine->all_records[engine->num_records] = record_copy;
+
+    // Increment the record count
+    engine->num_records += 1;
+
     // Update any relevant B+ tree indexes to include the new record
+    for (int i = 0; i < engine->num_indexes; i++) {
+        const char *indexed_attr = engine->indexed_attributes[i];
+        
+        // TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO
+        // Insert the new record into the B+ tree index for indexed_attr
+        // Determine how to extract the key from newRecord based on indexed_attr
+        // and attach the record pointer accordingly
+        // Then call the appropriate B+ tree insertion function
+    }
+
     return true;  // Placeholder for now
 }
 
@@ -202,6 +268,7 @@ struct engineS *initializeEngineSerial(
 
     // Read all records from the database into memory and store in engine->all_records
     if(!datafile){ datafile = "../data/commands_50k.csv"; }; // Filepath default
+    engine->datafile = strdup(datafile);
     engine->all_records = getAllRecordsFromFile(datafile, &engine->num_records);  // Directly update record count
 
     // Copy indexed attribute names and types into engine struct (defaults)

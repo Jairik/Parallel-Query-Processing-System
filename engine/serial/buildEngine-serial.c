@@ -8,16 +8,10 @@
 node *makeIndexSerial(struct engineS *engine, const char *indexName) {
     // Load all records from the engine's data source
     record **records = engine->all_records;
-    int num_records = 0;
-    
-    // Count the records (assuming NULL-terminated or we need a counter in engine)
-    // For now, we'll need to count them
-    while (records != NULL && records[num_records] != NULL) {
-        num_records++;
-    }
+    int numRecords = engine->num_records;
     
     // Build the B+ tree from the records array
-    node *root = load_into_bplus_tree(records, num_records);
+    node *root = load_into_bplus_tree(records, numRecords);
     if (VERBOSE && root == NULL) {
         fprintf(stderr, "Failed to load data into B+ tree\n");
     }
@@ -45,6 +39,7 @@ node *loadIntoBplusTree(record **records, int num_records) {
             root = startNewTree(current_record->command_id, current_record);
         } 
         else {
+            // TODO TODO TODO TODO TODO Modify the B+ Implementation Directly to solve this issue
             root = insert(root, current_record->command_id, 0);
             // Note: insert creates a new record internally, so we need to replace it
             // with our actual record pointer
