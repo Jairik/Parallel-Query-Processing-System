@@ -2,7 +2,7 @@
 
 Core methods for building the "DB", storing the B+ Trees, and executing commands.
 
-## Contents
+## Summarized Contents
 
 The engine will contain implementations for serial, OpenMP, and OpenMPI versions.
 

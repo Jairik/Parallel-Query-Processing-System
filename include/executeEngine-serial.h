@@ -47,10 +47,11 @@ void freeResultSet(struct resultSetS *result);
 struct whereClauseS {
     const char *attribute;  // Attribute name to filter on (e.g., "risk_level")
     const char *operator;  // Comparison operator (=, !=, <, >, <=, >=)
-    const char *value;  // Value to compare against (as string, converted internally based on type)
-    int value_type;  // Type of value (0 = integer, 1 = string, 2 = boolean)
+    const char *value;      // Value to compare against (as string, converted internally based on type)
+    int value_type;         // Type of value (0 = integer, 1 = string, 2 = boolean)
     struct whereClauseS *next;  // Pointer to the next condition in the chain (or NULL)
-    const char *logical_op;  // Logical operator connecting to next condition ("AND", "OR")
+    const char *logical_op; // Logical operator connecting to next condition ("AND", "OR")
+    struct whereClauseS *sub; // Sub-expression for parentheses/nested conditions
 };
 
 // Function pointers for non-numerical comparisons
@@ -137,11 +138,15 @@ int isAttributeIndexed(
     const char *attributeName  // Name of the attribute to check
 );
 
-// Helper function that performs a linear search through all records based on the WHERE clause
+// Helper function that performs a linear search through a given array of records based on the WHERE clause
 record **linearSearchRecords(
-    struct engineS *engine,  // Constant engine object
+    record **records,  // Array of records to search
+    int num_records,   // Number of records in the array
     struct whereClauseS *whereClause,  // WHERE clause
     int *matchingRecords  // Output parameter for number of matching records
 );
+
+// Recursive evaluator for WHERE clause
+bool evaluateWhereClause(record *r, struct whereClauseS *wc);
 
 #endif // EXECUTE_ENGINE_SERIAL_H

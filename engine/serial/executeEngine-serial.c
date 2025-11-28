@@ -136,6 +136,109 @@ where_condition_func create_where_condition(const char *attribute, const char *o
     return NULL;
 }
 
+/* Helper: Converts a specific attribute of a record to a string */
+char *get_attribute_string_value(record *r, const char *attribute) {
+    char buffer[4096]; // Large buffer for safety
+    
+    if (strcmp(attribute, "command_id") == 0) {
+        sprintf(buffer, "%llu", r->command_id);
+    } else if (strcmp(attribute, "raw_command") == 0) {
+        return strdup(r->raw_command); // Already a string
+    } else if (strcmp(attribute, "base_command") == 0) {
+        return strdup(r->base_command);
+    } else if (strcmp(attribute, "shell_type") == 0) {
+        return strdup(r->shell_type);
+    } else if (strcmp(attribute, "exit_code") == 0) {
+        sprintf(buffer, "%d", r->exit_code);
+    } else if (strcmp(attribute, "timestamp") == 0) {
+        return strdup(r->timestamp);
+    } else if (strcmp(attribute, "sudo_used") == 0) {
+        return strdup(r->sudo_used ? "true" : "false");
+    } else if (strcmp(attribute, "working_directory") == 0) {
+        return strdup(r->working_directory);
+    } else if (strcmp(attribute, "user_id") == 0) {
+        sprintf(buffer, "%d", r->user_id);
+    } else if (strcmp(attribute, "user_name") == 0) {
+        return strdup(r->user_name);
+    } else if (strcmp(attribute, "host_name") == 0) {
+        return strdup(r->host_name);
+    } else if (strcmp(attribute, "risk_level") == 0) {
+        sprintf(buffer, "%d", r->risk_level);
+    } else {
+        return strdup("NULL"); // Unknown attribute
+    }
+    
+    return strdup(buffer);
+}
+
+/* Helper function to check a single condition against a record */
+bool checkCondition(record *r, struct whereClauseS *condition) {
+    void *valuePtr;
+    bool result = false;
+    
+    // 1. Determine specific C type based on Attribute Name
+    if (strcmp(condition->attribute, "command_id") == 0) {
+        unsigned long long *val = malloc(sizeof(unsigned long long));
+        *val = strtoull(condition->value, NULL, 10);
+        valuePtr = val;
+    } 
+    else if (strcmp(condition->attribute, "risk_level") == 0 || 
+             strcmp(condition->attribute, "exit_code") == 0 ||
+             strcmp(condition->attribute, "user_id") == 0) {
+        int *val = malloc(sizeof(int));
+        *val = atoi(condition->value);
+        valuePtr = val;
+    }
+    else if (strcmp(condition->attribute, "sudo_used") == 0) {
+        bool *val = malloc(sizeof(bool));
+        *val = (strcasecmp(condition->value, "true") == 0 || strcmp(condition->value, "1") == 0);
+        valuePtr = val;
+    }
+    else {
+        // String types
+        valuePtr = (void *)condition->value;
+    }
+
+    where_condition_func conditionFunc = create_where_condition(condition->attribute, condition->operator, valuePtr);
+    if (conditionFunc != NULL && conditionFunc((void *)r, valuePtr)) {
+        result = true;
+    }
+    
+    // Cleanup
+    if (valuePtr != condition->value) {
+        free(valuePtr);
+    }
+    
+    return result;
+}
+
+/* Recursive evaluator for WHERE clause */
+bool evaluateWhereClause(record *r, struct whereClauseS *wc) {
+    if (wc == NULL) return true;
+
+    bool currentResult = false;
+
+    if (wc->sub != NULL) {
+        currentResult = evaluateWhereClause(r, wc->sub);
+    } else {
+        currentResult = checkCondition(r, wc);
+    }
+
+    if (wc->next == NULL) {
+        return currentResult;
+    }
+
+    if (wc->logical_op != NULL) {
+        if (strcmp(wc->logical_op, "OR") == 0) {
+            return currentResult || evaluateWhereClause(r, wc->next);
+        } else if (strcmp(wc->logical_op, "AND") == 0) {
+            return currentResult && evaluateWhereClause(r, wc->next);
+        }
+    }
+    
+    return currentResult && evaluateWhereClause(r, wc->next);
+}
+
 /* Main functionality for a SELECT query
  * Parameters:
 *   engine - constant engine object
@@ -153,23 +256,28 @@ struct resultSetS *executeQuerySelectSerial(
     const char *tableName,  // Table to query from (FROM clause)
     struct whereClauseS *whereClause  // WHERE clause (NULL if no filtering)
 ) {
-    // TODO - IMPLEMENT LOGIC
-    // Requirements:
-    // Check if any indexed attributes are in the WHERE clause
-    // If indexed attributes are present, use the corresponding B+ tree index to quickly locate matching records
-    // If no indexed attributes are present, perform a full table scan of engine->all_records
 
     // Flags to track if any indexed attributes are in the WHERE clause
     bool anyIndexExists = false;  // Flag for quick fallback to full table scan
     bool indexExists[engine->num_indexes];  // Track which indexes exist for WHERE attributes
 
     // Allocate space for matching records and result struct
-    record **matchingRecords = (record **)malloc(engine->num_records * sizeof(record *));
-    struct resultSet *queryResults = (struct resultSet *)malloc(sizeof(struct resultSet));
+    record **matchingRecords = (record **)malloc(20 * sizeof(record *));  // Initial capacity of 20
+    struct resultSetS *queryResults = (struct resultSetS *)malloc(sizeof(struct resultSetS));
     int matchCount = 0;
 
+    // Initialize queryResults object
+    queryResults->numRecords = 0;
+    queryResults->numColumns = 0;
+    queryResults->columnNames = NULL;
+    queryResults->data = NULL;
+    queryResults->queryTime = 0.0;
+    queryResults->success = false;
+
+    // Start the timer
+    clock_t start = clock();  // Start a timer
+
     // Get all indexed attributes in the WHERE clause, using the B+ tree indexes where possible
-    // NOTE: THIS IS ONLY A PLACEHOLDER. CHECK TOKENIZER BEHAVIOR FOR WHERE CLAUSE PARSING
     struct whereClauseS *wc = whereClause;
     while (wc != NULL) {
         for (int i = 0; i < engine->num_indexes; i++) {
@@ -177,7 +285,53 @@ struct resultSetS *executeQuerySelectSerial(
                 anyIndexExists = true;
                 indexExists[i] = true;
 
-                // TODO - USE B+ TREE TO GET MATCHING RECORDS FOR THIS ATTRIBUTE & WHERE CLAUSE
+                // Use B+ tree index for this attribute
+                node *cur_root = engine->bplus_tree_roots[i]; // B+ tree root for this indexed attribute
+                
+                KEY_T key_start, key_end;
+                // Initialize keys based on operator
+                unsigned long long val = strtoull(wc->value, NULL, 10);
+                
+                // Determine range based on operator
+                if (strcmp(wc->operator, "=") == 0) {
+                    key_start.v.u64 = val;
+                    key_end.v.u64 = val;
+                } else if (strcmp(wc->operator, ">") == 0) {
+                    key_start.v.u64 = val + 1;
+                    key_end.v.u64 = UINT64_MAX;
+                } else if (strcmp(wc->operator, ">=") == 0) {
+                    key_start.v.u64 = val;
+                    key_end.v.u64 = UINT64_MAX;
+                } else if (strcmp(wc->operator, "<") == 0) {
+                    key_start.v.u64 = 0;
+                    key_end.v.u64 = val - 1;
+                } else if (strcmp(wc->operator, "<=") == 0) {
+                    key_start.v.u64 = 0;
+                    key_end.v.u64 = val;
+                } else {
+                    // Default/Fallback
+                    key_start.v.u64 = 0;
+                    key_end.v.u64 = UINT64_MAX;
+                }
+                key_start.type = KEY_UINT64;
+                key_end.type = KEY_UINT64;
+
+                // Allocating for keys, using num_records as upper bound.
+                KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));
+                ROW_PTR *returned_pointers = malloc(engine->num_records * sizeof(ROW_PTR));
+                
+                int num_found = findRange(cur_root, key_start, key_end, false, returned_keys, returned_pointers);
+                
+                // Add found records to matchingRecords
+                if (num_found > 0) {
+                    // Reallocate matchingRecords if needed (though we alloc'd max size initially)
+                    for (int k = 0; k < num_found; k++) {
+                        matchingRecords[matchCount++] = (record *)returned_pointers[k];
+                    }
+                }
+                
+                free(returned_keys);
+                free(returned_pointers);
             }
             else {
                 indexExists[i] = false;
@@ -186,33 +340,73 @@ struct resultSetS *executeQuerySelectSerial(
         wc = wc->next;
     }
 
-    // Perform index scans on all indexed attributes in the WHERE clause. For non-indexed attributes, fall back to linear search
-    // TODO - Filter records based on WHERE clause using indexes where possible
 
-
-    // Fallback: If no index exists for a WHERE clause attributes, perform a full table scan on currently known attributes
-    clock_t start = clock();  // Start a timer
-    
+    // Perform linear search if on all non-indexed attributes or no indexes matched
     // No indexes exist for any WHERE attributes, search entire table
     if(!anyIndexExists){
-        matchingRecords = linearSearchRecords(engine->all_records, whereClause, &matchCount);
+        free(matchingRecords); // Free the empty one we made
+        matchingRecords = linearSearchRecords(engine->all_records, engine->num_records, whereClause, &matchCount);
     }
     // There were some indexes in the WHERE clause, so we can use the known matching records to reduce linear search
     else{
-        matchingRecords = linearSearchRecords(matchingRecords, whereClause, &matchCount);
+        // Filter the candidate records found via index against the full WHERE clause
+        record **filteredRecords = linearSearchRecords(matchingRecords, matchCount, whereClause, &matchCount);
+        free(matchingRecords);
+        matchingRecords = filteredRecords;
     }
-    double time_taken = ((double)clock() - start) / CLOCKS_PER_SEC;  // Time in seconds
+    double end = (double) clock();
+    double time_taken = ((double) end - start) / CLOCKS_PER_SEC;  // Time in seconds
     if (VERBOSE) {
         printf("Linear search took %f seconds\n", time_taken);
     }
 
     // Extract the requested attributes from matching records and format the result
+    queryResults->numRecords = matchCount;
+    
+    // Handle "SELECT *" case (if selectItems is NULL or empty)
+    const char *all_columns[] = {"command_id", "raw_command", "base_command", "shell_type", 
+                                 "exit_code", "timestamp", "sudo_used", "working_directory", 
+                                 "user_id", "user_name", "host_name", "risk_level"};
+    int total_columns_count = 12;
 
+    if (selectItems == NULL || numItems == 0) {
+        queryResults->numColumns = total_columns_count;
+        selectItems = all_columns; // Point to our static list
+    } else {
+        queryResults->numColumns = numItems;
+    }
 
-    // Assign the results to a resultSet struct
+    // Allocate memory for column headers
+    queryResults->columnNames = (char **)malloc(queryResults->numColumns * sizeof(char *));
+    for (int i = 0; i < queryResults->numColumns; i++) {
+        queryResults->columnNames[i] = strdup(selectItems[i]);
+    }
 
+    // Allocate memory for data matrix [rows][cols]
+    queryResults->data = (char ***)malloc(queryResults->numRecords * sizeof(char **));
 
-    return NULL;  // Placeholder for now
+    // Populate the matrix
+    for (int i = 0; i < queryResults->numRecords; i++) {
+        queryResults->data[i] = (char **)malloc(queryResults->numColumns * sizeof(char *));
+        record *r = matchingRecords[i];
+        
+        for (int j = 0; j < queryResults->numColumns; j++) {
+            // Extract ONLY the attribute requested in selectItems[j]
+            queryResults->data[i][j] = get_attribute_string_value(r, selectItems[j]);
+        }
+    }
+
+    // Clean up the temporary array of pointers (temp array, NOT records themselves)
+    free(matchingRecords);
+    
+    queryResults->queryTime = time_taken;
+    queryResults->success = true;
+    
+    // Allocate column types (placeholder)
+    queryResults->columnTypes = (FieldType *)malloc(queryResults->numColumns * sizeof(FieldType));
+    memset(queryResults->columnTypes, 0, queryResults->numColumns * sizeof(FieldType));
+
+    return queryResults;
 }
 
 /* Main functionality for INSERT logic
@@ -310,19 +504,96 @@ bool executeQueryInsertSerial(
  *   tableName - name of the table
  *   whereClause - WHERE clause (NULL for all rows)
  * Returns:
- *   number of deleted records
+ *   ResultSet containing number of deleted records
  */
-int executeQueryDeleteSerial(
+struct resultSetS *executeQueryDeleteSerial(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to delete from
     struct whereClauseS *whereClause  // WHERE clause (NULL for all rows)
 ) {
-    // TODO - IMPLEMENT LOGIC
-    // Requirements:
-    // Identify records matching the WHERE clause conditions
-    // Remove matching records from engine->all_records and update the array accordingly
-    // Update any relevant B+ tree indexes to remove references to deleted records
-    return 0;  // Placeholder for now (returns number of deleted records)
+    struct resultSetS *result = (struct resultSetS *)malloc(sizeof(struct resultSetS));
+    result->numRecords = 0;
+    result->numColumns = 0;
+    result->columnNames = NULL;
+    result->columnTypes = NULL;
+    result->data = NULL;
+    result->queryTime = 0.0;
+    result->success = false;
+
+    clock_t start = clock();
+    int deletedCount = 0;
+    int writeIndex = 0;
+
+    // Iterate through all records in the engine
+    for (int i = 0; i < engine->num_records; i++) {
+        record *currentRecord = engine->all_records[i];
+        bool shouldDelete = false;
+
+        // Check if the record matches the WHERE clause
+        if (whereClause == NULL) {
+            shouldDelete = true; // Delete all if no WHERE clause
+        } else {
+            shouldDelete = evaluateWhereClause(currentRecord, whereClause);
+        }
+
+        if (shouldDelete) {
+            // Delete the matched record
+            
+            // Remove from B+ Tree Indexes
+            for (int j = 0; j < engine->num_indexes; j++) {
+                 const char *indexed_attr = engine->indexed_attributes[j];
+                 KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
+                 engine->bplus_tree_roots[j] = delete(engine->bplus_tree_roots[j], key);
+            }
+
+            // Free the record memory
+            free(currentRecord);
+            deletedCount++;
+        } else {
+            // Keep the record, move it to the current write position if needed
+            if (writeIndex != i) {
+                engine->all_records[writeIndex] = currentRecord;
+            }
+            writeIndex++;
+        }
+    }
+
+    // Update the record count in the engine
+    engine->num_records = writeIndex;
+
+    // Rewrite the CSV file with the remaining records
+    FILE *file = fopen(engine->datafile, "w");
+    if (file != NULL) {
+        for (int i = 0; i < engine->num_records; i++) {
+            record *r = engine->all_records[i];
+            fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
+                r->command_id,
+                r->raw_command,
+                r->base_command,
+                r->shell_type,
+                r->exit_code,
+                r->timestamp,
+                r->sudo_used,
+                r->working_directory,
+                r->user_id,
+                r->user_name,
+                r->host_name,
+                r->risk_level);
+        }
+        fclose(file);
+    } else {
+        if (VERBOSE) {
+            fprintf(stderr, "Failed to open data file for rewriting: %s\n", engine->datafile);
+        }
+    }
+
+    double time_taken = ((double)clock() - start) / CLOCKS_PER_SEC;
+    
+    result->numRecords = deletedCount;
+    result->queryTime = time_taken;
+    result->success = true;
+
+    return result;
 }
 
 /* Initialize the engine, allocating space for default values, loading indexes, and loading the data
@@ -351,7 +622,7 @@ struct engineS *initializeEngineSerial(
 
     // Initialize indexes and tree roots
     engine->tableName = strdup(tableName);
-    engine->num_indexes = num_indexes;
+    engine->num_indexes = 0; // Start at 0, makeIndexSerial will increment
     engine->bplus_tree_roots = (node **)malloc(num_indexes * sizeof(node *));
     engine->indexed_attributes = (char **)malloc(num_indexes * sizeof(char *));
     engine->attribute_types = (FieldType *)malloc(num_indexes * sizeof(FieldType));
@@ -370,9 +641,6 @@ struct engineS *initializeEngineSerial(
 
     // Copy indexed attribute names and types into engine struct (defaults)
     for (int i = 0; i < num_indexes; i++) {
-        // Update the indexed attributes and types for the engine
-        engine->indexed_attributes[i] = strdup(indexed_attributes[i]);
-        engine->attribute_types[i] = mapAttributeType(attribute_types[i]);
         // Build B+ tree index for each indexed attribute
         bool success = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
         if (!success) {
@@ -431,48 +699,19 @@ int isAttributeIndexed(struct engineS *engine, const char *attributeName) {
     return -1;  // Attribute is not indexed, return -1 as signal value
 }
 
-/* Performs a linear search when no index is found (fallback) */
-record **linearSearchRecords(struct engineS *engine, struct whereClauseS *whereClause, int *matchingRecords) {
+/* Performs a linear search through a given array of records based on the WHERE clause */
+record **linearSearchRecords(record **records, int num_records, struct whereClauseS *whereClause, int *matchingRecords) {
     // Allocate space for results array
     record **results = malloc(sizeof(record *));
     *matchingRecords = 0;
 
     // Iterate through all records and apply WHERE clause filtering
-    for(int i = 0; i < engine->num_records; i++) {
-        record *currentRecord = engine->all_records[i];
+    for(int i = 0; i < num_records; i++) {
+        record *currentRecord = records[i];
         bool matches = true;
 
-        // Evaluate each condition in the WHERE clause
-        struct whereClauseS *currentCondition = whereClause;
-        while (currentCondition != NULL) {
-            // Create comparison function for this condition
-            void *valuePtr;
-            int valueType = currentCondition->value_type;
-            if (valueType == 0) { // Integer
-                int *intValue = malloc(sizeof(int));
-                *intValue = atoi(currentCondition->value);
-                valuePtr = intValue;
-            } else if (valueType == 1) { // String
-                valuePtr = (void *)currentCondition->value;
-            } else if (valueType == 2) { // Boolean
-                bool *boolValue = malloc(sizeof(bool));
-                *boolValue = (strcmp(currentCondition->value, "true") == 0) ? true : false;
-                valuePtr = boolValue;
-            } else {
-                matches = false; // Unsupported type
-                break;
-            }
-
-            where_condition_func conditionFunc = create_where_condition(currentCondition->attribute, currentCondition->operator, valuePtr);
-            if (conditionFunc == NULL || !conditionFunc((void *)currentRecord, valuePtr)) {
-                matches = false; // Condition not met
-            }
-
-            // Free allocated memory for valuePtr if needed
-            if (valueType == 0) free(valuePtr);
-            if (valueType == 2) free(valuePtr);
-
-            currentCondition = currentCondition->next; // Move to next condition
+        if (whereClause != NULL) {
+            matches = evaluateWhereClause(currentRecord, whereClause);
         }
 
         // If record matches all conditions, add to results
