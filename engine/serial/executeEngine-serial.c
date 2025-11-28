@@ -4,6 +4,7 @@
 #include "../../include/buildEngine-serial.h"
 #include "../../include/executeEngine-serial.h"
 #include <time.h>  // Timing
+#include "executeEngine-serial.h"
 #define VERBOSE 1
 
 // Function pointer type for WHERE condition evaluation
@@ -145,7 +146,7 @@ where_condition_func create_where_condition(const char *attribute, const char *o
 * Returns:
 *    A 
 */
-char *executeQuerySelectSerial(
+struct resultSetS *executeQuerySelectSerial(
     struct engineS *engine,  // Constant engine object
     const char *selectItems[],  // Attributes to select (SELECT clause)
     int numItems,  // Number of attributes to select (NULL for all)
@@ -484,4 +485,35 @@ record **linearSearchRecords(struct engineS *engine, struct whereClauseS *whereC
 
     // Return the array of matching records
     return results;
+}
+
+// Helper function to free a resultSet struct
+void freeResultSet(struct resultSetS * result){
+    if(result != NULL){
+        // Free column names
+        if(result->columnNames != NULL){
+            for(int i = 0; i < result->numColumns; i++){
+                free(result->columnNames[i]);
+            }
+            free(result->columnNames);
+        }
+        // Free column types
+        if(result->columnTypes != NULL){
+            free(result->columnTypes);
+        }
+        // Free data matrix
+        if(result->data != NULL){
+            for(int i = 0; i < result->numRecords; i++){
+                if(result->data[i] != NULL){
+                    for(int j = 0; j < result->numColumns; j++){
+                        free(result->data[i][j]);
+                    }
+                    free(result->data[i]);
+                }
+            }
+            free(result->data);
+        }
+        // Finally, free the result struct itself
+        free(result);
+    }
 }

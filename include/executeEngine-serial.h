@@ -23,16 +23,18 @@ struct engineS {
     char *datafile; // Path to the data file
 };
 
-/* Result set - The results of any given query */
-struct resultSet {
-    int numRecords;  // Number of rows found/affected
-    int numColumns;  // Number of columns selected/affected (NULL or 0 if not applicable)
-    char **columnNames;  // Array of column names (headers/attribute names)
+/* Result set - The results of any given query 
+ * Holds the output of a select query, containing the selected columns and rows in a 2D string matrix.
+*/
+struct resultSetS {
+    int numRecords;  // Number of rows found or affected
+    int numColumns;  // Number of columns selected
+    char **columnNames;  // Array of column names (headers)
     FieldType *columnTypes;  // Array of column types (corresponding to columnNames)
     char ***data;  // 2D Matrix of result data as strings: data[row][col]
     double queryTime;  // Time taken to execute the query
     bool success;  // Whether the query was successful
-} resultSet;
+};
 
 /* Frees the memory allocated for a result set */
 void freeResultSet(struct resultSetS *result);
@@ -44,11 +46,11 @@ void freeResultSet(struct resultSetS *result);
  */
 struct whereClauseS {
     const char *attribute;  // Attribute name to filter on (e.g., "risk_level")
-    const char *operator;   // Comparison operator (=, !=, <, >, <=, >=)
-    const char *value;      // Value to compare against (as string, converted internally based on type)
-    int value_type;         // Type of value (0 = integer, 1 = string, 2 = boolean)
+    const char *operator;  // Comparison operator (=, !=, <, >, <=, >=)
+    const char *value;  // Value to compare against (as string, converted internally based on type)
+    int value_type;  // Type of value (0 = integer, 1 = string, 2 = boolean)
     struct whereClauseS *next;  // Pointer to the next condition in the chain (or NULL)
-    const char *logical_op; // Logical operator connecting to next condition ("AND", "OR")
+    const char *logical_op;  // Logical operator connecting to next condition ("AND", "OR")
 };
 
 // Function pointers for non-numerical comparisons
@@ -82,14 +84,14 @@ bool executeQueryInsertSerial(
     const record *r       // Record to insert
 );
 
-// Update function - main entry point for UPDATE queries. Returns number of rows updated
+// Update function - main entry point for UPDATE queries. Returns a ResultSet
 /* 
  * Executes an UPDATE query.
  * - setItems: Array of [Attribute, Value] pairs to update.
  * - whereClause: Filters which rows to update.
- * Returns the count of modified records.
+ * Returns a ResultSet containing the number of affected rows (numRecords).
  */
-int executeQueryUpdateSerial(
+struct resultSetS *executeQueryUpdateSerial(
     struct engineS *engine,              // Engine object
     const char *tableName,               // Table to update
     const char *(*setItems)[2],          // Array of attribute-value pairs to set
@@ -101,9 +103,9 @@ int executeQueryUpdateSerial(
 /* 
  * Executes a DELETE query.
  * - whereClause: Filters which rows to delete.
- * Returns the count of deleted records.
+ * Returns a ResultSet containing the number of deleted rows (numRecords).
  */
-int executeQueryDeleteSerial(
+struct resultSetS *executeQueryDeleteSerial(
     struct engineS *engine,              // Engine object
     const char *tableName,               // Table to delete from
     struct whereClauseS *whereClause     // WHERE clause (NULL for all rows)
