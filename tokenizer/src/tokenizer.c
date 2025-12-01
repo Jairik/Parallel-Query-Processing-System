@@ -166,6 +166,12 @@ ParsedSQL parse_tokens(Token tokens[]) {
                 while (tokens[i].type != TOKEN_EOF && strcmp(tokens[i].value, "ORDER") != 0 && strcmp(tokens[i].value, ";") != 0) {
                     if (sql.num_conditions >= 5) break;
                     
+                    // Skip parentheses (temporary hack for nested queries support in parser)
+                    if (strcmp(tokens[i].value, "(") == 0 || strcmp(tokens[i].value, ")") == 0) {
+                        i++;
+                        continue;
+                    }
+
                     Condition *cond = &sql.conditions[sql.num_conditions];
                     
                     // Column

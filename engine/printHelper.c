@@ -123,7 +123,7 @@ void printTable(FILE *output, struct resultSetS *result, int limit){
     }
 
     // Print runtime summary
-    fprintf(output, "Total Records: %d | Query Time: %.4f seconds\n", result->numRecords, result->queryTime);
+    fprintf(output, "Total Records: %d | Query Time: %.4f seconds\n\n", result->numRecords, result->queryTime);
     
     free(colWidths);
 

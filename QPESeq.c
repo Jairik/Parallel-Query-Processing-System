@@ -131,10 +131,6 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
 
     // Parse - Determine which command is ran and extract components
     ParsedSQL parsed = parse_tokens(tokens);
-    // if (parsed.command != CMD_SELECT) {
-    //     printf("Parser did not recognize SELECT command.\n");
-    //     return;
-    // }
 
     // Convert to Engine Arguments
     const char **selectItems = NULL;
@@ -177,9 +173,9 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
             r.risk_level = atoi(parsed.insert_values[11]);
 
             if (executeQueryInsertSerial(engine, parsed.table, &r)) {
-                printf("Insert successful.\n");
+                printf("Insert successful.\n\n");
             } else {
-                printf("Insert failed.\n");
+                printf("Insert failed.\n\n");
             }
             return;
         }

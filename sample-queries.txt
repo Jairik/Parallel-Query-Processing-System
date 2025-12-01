@@ -1,23 +1,39 @@
--- SAMPLE SQL QUERIES
--- Sample 1:
+# -- SAMPLE SQL QUERIES --
+# -- Sample 1:
 SELECT command_id, base_command, sudo_used, user_name, timestamp
 FROM Commands
-WHERE sudo_used = TRUE AND user_name = "aczerwinski1"; -- Can change username to test on own computer
+WHERE sudo_used = FALSE AND user_name = "student1030";
 
--- Sample 2:
+# -- Sample 2:
 SELECT command_id, raw_command, user_name, risk_level, timestamp
 FROM Commands
 WHERE sudo_used = TRUE AND risk_level > 2
 ORDER BY risk_level ASC;
 
--- Sample 3:
+# -- Sample 3:
 SELECT raw_command, exit_code, timestamp, sudo_used, user_name, risk_level
 FROM Commands
 WHERE risk_level > 3
 ORDER BY timestamp DESC;
 
--- Sample 4:
+# -- Sample 4:
 SELECT *
 FROM Commands
 WHERE risk_level = 5
 ORDER BY timestamp DESC;
+
+# -- Sample 5:
+INSERT INTO Commands VALUES (999999, "echo 'test insert'", "echo", "bash", 0, "2025-12-01T12:00:00.000Z", "FALSE", "/home/test", 1000, "testuser", "test-host", 1);
+
+# -- Sample 6:
+DELETE FROM Commands WHERE command_id = 999999;
+
+# -- Sample 7:
+SELECT command_id, raw_command, risk_level, exit_code
+FROM Commands
+WHERE sudo_used = TRUE OR (risk_level = 5 AND shell_type = "bash");
+
+# -- Sample 8:
+SELECT user_name, working_directory, base_command
+FROM Commands
+WHERE user_id = 1001 OR (user_name = "student1002" AND shell_type = "zsh");
