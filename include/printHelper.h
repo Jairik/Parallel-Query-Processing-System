@@ -4,7 +4,8 @@
 #include "../include/executeEngine-serial.h"  // Same data structure for all engines
 
 // Helper function to print the header table - column names
-void print_header_table(FILE *output, struct resultSetS *result);
+void printHeader(FILE *output, struct resultSetS *result, int *colWidths);
 
 // Pretty print the full result table - headers and data rows
-void print_full_table(FILE *output, struct resultSetS *result);
+// limit: max number of rows to print (0 or negative for all)
+void printTable(FILE *output, struct resultSetS *result, int limit);

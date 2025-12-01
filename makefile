@@ -25,7 +25,7 @@ TEST_BIN_DIR := build/tests
 TEST_BINS    := $(patsubst tests/%.c,$(TEST_BIN_DIR)/%,$(TEST_SRCS))
 
 # Serial engine sources required for linking (only the modern B+ tree for now)
-ENGINE_SERIAL_SRCS := engine/bplus.c engine/recordSchema.c engine/serial/executeEngine-serial.c engine/serial/buildEngine-serial.c
+ENGINE_SERIAL_SRCS := engine/bplus.c engine/recordSchema.c engine/serial/executeEngine-serial.c engine/serial/buildEngine-serial.c engine/printHelper.c
 ENGINE_SERIAL_OBJS := $(ENGINE_SERIAL_SRCS:.c=.o)
 
 # Tokenizer sources

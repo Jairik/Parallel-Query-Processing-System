@@ -6,6 +6,7 @@ ENGINE_SOURCES = $(wildcard $(ENGINE_DIR)/*.c)
 ENGINE_OBJECTS = $(ENGINE_SOURCES:.c=.o)
 BPLUS_OBJ = $(ENGINE_DIR_MAIN)/bplus.o
 RECORD_SCHEMA_OBJ = $(ENGINE_DIR_MAIN)/recordSchema.o
+PRINT_HELPER_OBJ = $(ENGINE_DIR_MAIN)/printHelper.o
 TOKENIZER_SRC = ../tokenizer/src/tokenizer.c
 TOKENIZER_OBJ = ../tokenizer/src/tokenizer.o
 
@@ -16,7 +17,7 @@ all: $(TARGETS)
 bplus-serial-test: bplus-serial-test.c $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ) $(BPLUS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-serial-SELECT-test: serial-SELECT-test.c $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ) $(TOKENIZER_OBJ) $(BPLUS_OBJ)
+serial-SELECT-test: serial-SELECT-test.c $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ) $(TOKENIZER_OBJ) $(BPLUS_OBJ) $(PRINT_HELPER_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(TOKENIZER_OBJ): $(TOKENIZER_SRC)

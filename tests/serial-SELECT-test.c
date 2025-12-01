@@ -12,42 +12,6 @@
 #define TABLE_NAME "commands"
 #define MAX_TOKENS 100
 
-// Helper to print the result set for verification
-void print_result_set(struct resultSetS *result, int max_rows) {
-    if (!result || !result->success) {
-        printf("Query failed or returned NULL result set.\n");
-        return;
-    }
-
-    printf("Query returned %d records with %d columns in %.4f seconds:\n", 
-           result->numRecords, result->numColumns, result->queryTime);
-
-    // Print headers
-    for (int i = 0; i < result->numColumns; i++) {
-        printf("%-20s", result->columnNames[i]);
-    }
-    printf("\n");
-    
-    // Print separator
-    for (int i = 0; i < result->numColumns; i++) {
-        printf("--------------------");
-    }
-    printf("\n");
-
-    // Print data (limit to max_rows)
-    int limit = result->numRecords > max_rows ? max_rows : result->numRecords;
-    for (int i = 0; i < limit; i++) {
-        for (int j = 0; j < result->numColumns; j++) {
-            printf("%-20s", result->data[i][j]);
-        }
-        printf("\n");
-    }
-    if (result->numRecords > max_rows) {
-        printf("... (%d more records) ...\n", result->numRecords - max_rows);
-    }
-    printf("\n");
-}
-
 // Helper to map Parser OperatorType to string
 const char* get_operator_string(OperatorType op) {
     switch (op) {
@@ -166,7 +130,7 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     );
 
     // 5. Verify and Print
-    print_result_set(result, max_rows);
+    printTable(NULL, result, max_rows);
 
     // 6. Cleanup
     if (result) freeResultSet(result);
