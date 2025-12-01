@@ -7,6 +7,7 @@
 /* Creating a temporary test csv */
 void create_temp_csv(const char *filename) {
     FILE *f = fopen(filename, "w");
+    fprintf(f, "command_id,raw_command,base_command,shell_type,exit_code,timestamp,sudo_used,working_directory,user_id,user_name,host_name,risk_level\n");
     fprintf(f, "1,ls -la,ls,bash,0,2023-01-01,0,/home/user,1001,user1,host1,1\n");
     fprintf(f, "2,rm -rf /,rm,bash,1,2023-01-02,1,/root,0,root,host1,5\n");
     fprintf(f, "3,echo hello,echo,bash,0,2023-01-03,0,/home/user,1001,user1,host1,1\n");
@@ -80,7 +81,10 @@ void test_delete_index_runtime() {
     KEY_T key2;
     key2.type = KEY_UINT64;
     key2.v.u64 = 2;
-    assert(find_row(engine->bplus_tree_roots[0], key2) != NULL);
+    ROW_PTR *results;
+    int count = find_rows(engine->bplus_tree_roots[0], key2, &results);
+    assert(count > 0);
+    free(results);
 
     // Delete command_id = 2
     struct whereClauseS wc;
@@ -97,7 +101,8 @@ void test_delete_index_runtime() {
     freeResultSet(res);
 
     // Check that key 2 is gone from index
-    assert(find_row(engine->bplus_tree_roots[0], key2) == NULL);
+    count = find_rows(engine->bplus_tree_roots[0], key2, &results);
+    assert(count == 0);
     printf("Test Passed: Index updated correctly at runtime.\n");
 
     destroyEngineSerial(engine);

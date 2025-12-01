@@ -81,7 +81,12 @@ record **getAllRecordsFromFile(const char *filepath, int *num_records) {
     int count = 0;
 
     // Read each line and populate the records array
+    bool first_line = true;
     while (fgets(line, sizeof(line), file)) {
+        if (first_line) {
+            first_line = false;
+            continue; // Skip header
+        }
         record *new_record = getRecordFromLine(line);
         records = realloc(records, (count + 1) * sizeof(record *));
         if (records == NULL) {
@@ -152,7 +157,7 @@ char *parseCSVField(char **cursor) {
  *   record struct populated with data from the line
 */
 record *getRecordFromLine(char *line){
-    record *new_record = (record *)malloc(sizeof(record));
+    record *new_record = (record *)calloc(1, sizeof(record));
     if (new_record == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;

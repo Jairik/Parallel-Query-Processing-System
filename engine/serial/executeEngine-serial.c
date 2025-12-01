@@ -653,7 +653,7 @@ struct resultSetS *executeQueryDeleteSerial(
             for (int j = 0; j < engine->num_indexes; j++) {
                  const char *indexed_attr = engine->indexed_attributes[j];
                  KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
-                 engine->bplus_tree_roots[j] = delete(engine->bplus_tree_roots[j], key);
+                 engine->bplus_tree_roots[j] = delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
             }
 
             // Free the record memory

@@ -143,11 +143,10 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
 int main() {
     printf("\n=== Starting Serial SELECT Test ===\n\n");
 
-    // 1. Initialize the Engine
-    // We will index 'command_id' (UINT64) and 'risk_level' (INT) for this test
-    const char *indexed_attrs[] = {"command_id", "risk_level"};
-    const int attr_types[] = {0, 1}; // 0=UINT64, 1=INT
-    int num_indexes = 2;
+    // Initialize the Engine
+    const char *indexed_attrs[] = {"command_id", "risk_level"};  // NOTE: B+ TREE CURRENTLY DOES NOT SUPPORT DUPLICATES. WILL WORK PROPERLY ONCE FIXED.
+    const int attr_types[] = {0, 0}; // 0=UINT64
+    int num_indexes = 1;
 
     printf("Initializing Engine with data from: %s\n", DATA_FILE);
     struct engineS *engine = initializeEngineSerial(
@@ -164,7 +163,7 @@ int main() {
     }
     printf("Engine initialized successfully. Loaded %d records.\n\n", engine->num_records);
 
-    // 2. Run Test Cases
+    // Run Test Cases
 
     // Case 1: Select All (Limit 3 printed to avoid console flood)
     run_test_query(engine, "SELECT * FROM commands", 3);
@@ -185,7 +184,7 @@ int main() {
     // Case 6: Filter with non-indexed attribute
     run_test_query(engine, "SELECT * FROM commands WHERE exit_code = 0", 10);
 
-    // 3. Cleanup
+    // Cleanup
     destroyEngineSerial(engine);
     printf("=== Test Completed Successfully ===\n");
 

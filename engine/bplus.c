@@ -224,8 +224,9 @@ void printTree(node *const root) {
 /* ==================== Lookup wrappers ==================== */
 
 void findAndPrint(node *const root, KEY_T key) {
-    ROW_PTR row = find_row(root, key);
-    if (row == NULL)
+    ROW_PTR *rows;
+    int count = find_rows(root, key, &rows);
+    if (count == 0)
     {
         printf("Row not found under key ");
         print_key(key);
@@ -233,9 +234,12 @@ void findAndPrint(node *const root, KEY_T key) {
     }
     else
     {
-        printf("Found row pointer %p for key ", row);
-        print_key(key);
-        printf(".\n");
+        for (int i = 0; i < count; i++) {
+            printf("Found row pointer %p for key ", rows[i]);
+            print_key(key);
+            printf(".\n");
+        }
+        free(rows);
     }
 }
 
@@ -322,8 +326,9 @@ node *findLeaf(node *const root, KEY_T key, bool verbose) {
             printf("] ");
         }
         i = 0;
+        // Modified for duplicates: use > instead of >= to go to the leftmost child
         while (i < c->num_keys &&
-               compare_key(key, c->keys[i]) >= 0)
+               compare_key(key, c->keys[i]) > 0)
             i++;
         if (verbose)
             printf("%d ->\n", i);
@@ -342,20 +347,57 @@ node *findLeaf(node *const root, KEY_T key, bool verbose) {
     return c;
 }
 
-/* find_row: returns the row pointer for a given key, or NULL. */
-ROW_PTR find_row(node *root, KEY_T key) {
-    if (root == NULL)
-        return NULL;
+/* find_rows: returns the number of rows found and populates results array. */
+int find_rows(node *root, KEY_T key, ROW_PTR **results) {
+    if (root == NULL) {
+        *results = NULL;
+        return 0;
+    }
 
     node *leaf = findLeaf(root, key, false);
-    if (leaf == NULL)
-        return NULL;
-
-    for (int i = 0; i < leaf->num_keys; i++) {
-        if (compare_key(leaf->keys[i], key) == 0)
-            return (ROW_PTR)leaf->pointers[i];
+    if (leaf == NULL) {
+        *results = NULL;
+        return 0;
     }
-    return NULL;
+
+    int count = 0;
+    int capacity = 10;
+    *results = malloc(capacity * sizeof(ROW_PTR));
+    if (*results == NULL) {
+        perror("Failed to allocate memory for results");
+        exit(EXIT_FAILURE);
+    }
+    
+    // Find the first occurrence in the leaf
+    int i = 0;
+    while (i < leaf->num_keys && compare_key(leaf->keys[i], key) < 0)
+        i++;
+
+    // Traverse keys in this leaf and subsequent leaves
+    while (leaf != NULL) {
+        for (; i < leaf->num_keys; i++) {
+            if (compare_key(leaf->keys[i], key) == 0) {
+                if (count >= capacity) {
+                    capacity *= 2;
+                    ROW_PTR *temp = realloc(*results, capacity * sizeof(ROW_PTR));
+                    if (temp == NULL) {
+                        perror("Failed to reallocate memory for results");
+                        free(*results);
+                        exit(EXIT_FAILURE);
+                    }
+                    *results = temp;
+                }
+                (*results)[count++] = (ROW_PTR)leaf->pointers[i];
+            } else if (compare_key(leaf->keys[i], key) > 0) {
+                // Since keys are sorted, we can stop if we see a greater key
+                return count;
+            }
+        }
+        // Move to next leaf
+        leaf = leaf->pointers[order - 1];
+        i = 0;
+    }
+    return count;
 }
 
 /* cut: Returns split index favoring left side when odd length. */
@@ -622,15 +664,9 @@ node *insert(node *root, KEY_T key, ROW_PTR row_ptr) {
 
     node *leaf = findLeaf(root, key, false);
 
-    /* Upsert: if key exists in this leaf, overwrite pointer */
-    for (int i = 0; i < leaf->num_keys; i++) {
-        if (compare_key(leaf->keys[i], key) == 0) {
-            leaf->pointers[i] = row_ptr;
-            return root;
-        }
-    }
+    /* Duplicates allowed: removed upsert check */
 
-    /* Key not present: insert new entry */
+    /* Key not present or duplicate: insert new entry */
     if (leaf->num_keys < order - 1) {
         insertIntoLeaf(leaf, key, row_ptr);
         return root;
@@ -919,15 +955,33 @@ static node *deleteEntry(node *root, node *n, KEY_T key, void *pointer) {
 }
 
 /* delete: Master deletion function. */
-node *delete(node *root, KEY_T key) {
+node *delete(node *root, KEY_T key, ROW_PTR row_ptr) {
     node *key_leaf;
-    ROW_PTR key_record;
 
-    key_record = find_row(root, key);
+    // Find the leaf containing this specific pointer
     key_leaf = findLeaf(root, key, false);
+    
+    // Since findLeaf returns the first leaf >= key, we might need to traverse right
+    // if the key spans multiple leaves.
+    while (key_leaf != NULL) {
+        bool found_in_node = false;
+        for (int i = 0; i < key_leaf->num_keys; i++) {
+            if (compare_key(key_leaf->keys[i], key) == 0 && key_leaf->pointers[i] == row_ptr) {
+                found_in_node = true;
+                break;
+            }
+        }
+        
+        if (found_in_node) {
+            return deleteEntry(root, key_leaf, key, row_ptr);
+        }
 
-    if (key_record != NULL && key_leaf != NULL) {
-        root = deleteEntry(root, key_leaf, key, key_record);
+        // If we went past the key, stop
+        if (key_leaf->num_keys > 0 && compare_key(key_leaf->keys[0], key) > 0)
+            break;
+            
+        key_leaf = key_leaf->pointers[order - 1];
     }
+    
     return root;
 }

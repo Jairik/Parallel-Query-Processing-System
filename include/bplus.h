@@ -45,8 +45,8 @@ struct node {
 
 // Function prototypes for B+ Tree operations.
 node *insert(node *root, KEY_T key, ROW_PTR row_ptr);
-node *delete(node *root, KEY_T key);
-ROW_PTR find_row(node *root, KEY_T key);
+node *delete(node *root, KEY_T key, ROW_PTR row_ptr);
+int find_rows(node *root, KEY_T key, ROW_PTR **results);
 void printTree(node *const root);
 void printLeaves(node *const root);
 int height(node *const root);
