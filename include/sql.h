@@ -51,6 +51,15 @@ typedef struct {
     bool is_numeric; // Whether the value is a number or string/bool
 } Condition;
 
+// Recursive condition node for handling nested conditions (parentheses)
+typedef struct ConditionNode {
+    bool is_sub_expression;     // If true, this node contains a sub-expression (sub is valid)
+    Condition condition;        // Used when is_sub_expression is false
+    struct ConditionNode *sub;  // Sub-expression for parenthesized conditions
+    LogicOperator logic_op;     // Logical operator to connect to next node (AND/OR)
+    struct ConditionNode *next; // Next condition in the chain
+} ConditionNode;
+
 typedef struct {
     CommandType command;
     char table[64];
@@ -58,9 +67,11 @@ typedef struct {
     int num_columns;
     bool select_all;      // *
     
-    Condition conditions[5]; // Up to 5 conditions
+    Condition conditions[5]; // Up to 5 conditions (legacy flat storage)
     LogicOperator logic_ops[4]; // Logic between conditions (AND/OR)
     int num_conditions;
+    
+    ConditionNode *condition_tree; // Recursive condition tree for nested conditions
 
     char insert_values[10][256];
     int num_values;
@@ -77,6 +88,10 @@ int tokenize(const char *input, Token tokens[], int max_tokens);
 
 // Parser
 ParsedSQL parse_tokens(Token tokens[]);
+
+// ConditionNode helpers
+ConditionNode *create_condition_node(void);
+void free_condition_tree(ConditionNode *node);
 
 // Dispatcher removed
 

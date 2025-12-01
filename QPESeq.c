@@ -43,8 +43,18 @@ const char* get_logic_op_string(LogicOperator op) {
     }
 }
 
+// Forward declaration for recursive conversion
+static struct whereClauseS* convert_condition_tree(ConditionNode *node);
+
 // Helper to convert ParsedSQL conditions to engine's whereClauseS linked list
+// This function now supports nested conditions through the condition_tree
 struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
+    // Prefer the condition tree if available (supports nested conditions)
+    if (parsed->condition_tree != NULL) {
+        return convert_condition_tree(parsed->condition_tree);
+    }
+    
+    // Fall back to legacy flat conditions array
     if (parsed->num_conditions == 0) return NULL;
 
     struct whereClauseS *head = NULL;
@@ -63,7 +73,6 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
             node->value_type = 1; // String
         }
 
-        // TODO - Handle sub-expressions and nested conditions
         node->next = NULL;
         node->sub = NULL;
 
@@ -86,11 +95,76 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
     return head;
 }
 
-// Helper to free the manually constructed where clause
+// Recursively convert ConditionNode tree to whereClauseS linked list
+// This handles sub-expressions and nested conditions
+static struct whereClauseS* convert_condition_tree(ConditionNode *node) {
+    if (node == NULL) return NULL;
+    
+    struct whereClauseS *head = NULL;
+    struct whereClauseS *current = NULL;
+    
+    while (node != NULL) {
+        struct whereClauseS *wc = malloc(sizeof(struct whereClauseS));
+        wc->next = NULL;
+        wc->sub = NULL;
+        wc->logical_op = NULL;
+        
+        if (node->is_sub_expression) {
+            // This node is a sub-expression (parenthesized group)
+            wc->attribute = NULL;
+            wc->operator = NULL;
+            wc->value = NULL;
+            wc->value_type = 0;
+            wc->sub = convert_condition_tree(node->sub);
+        } else {
+            // This node is a simple condition
+            wc->attribute = strdup(node->condition.column);
+            wc->operator = strdup(get_operator_string(node->condition.op));
+            wc->value = strdup(node->condition.value);
+            
+            if (node->condition.is_numeric) {
+                wc->value_type = 0; // Integer/Number
+            } else {
+                wc->value_type = 1; // String
+            }
+        }
+        
+        // Set logical operator to connect to next
+        if (node->logic_op != LOGIC_NONE && node->next != NULL) {
+            wc->logical_op = strdup(get_logic_op_string(node->logic_op));
+        }
+        
+        if (head == NULL) {
+            head = wc;
+            current = wc;
+        } else {
+            current->next = wc;
+            current = wc;
+        }
+        
+        node = node->next;
+    }
+    
+    return head;
+}
+
+// Helper to free the manually constructed where clause (recursively handles sub-expressions)
 void free_where_clause_list(struct whereClauseS *head) {
     while (head) {
         struct whereClauseS *temp = head;
         head = head->next;
+        
+        // Recursively free sub-expressions
+        if (temp->sub) {
+            free_where_clause_list(temp->sub);
+        }
+        
+        // Free allocated strings
+        if (temp->attribute) free((void*)temp->attribute);
+        if (temp->operator) free((void*)temp->operator);
+        if (temp->value) free((void*)temp->value);
+        if (temp->logical_op) free((void*)temp->logical_op);
+        
         free(temp);
     }
 }
