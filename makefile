@@ -32,7 +32,7 @@ ENGINE_SERIAL_OBJS := $(ENGINE_SERIAL_SRCS:.c=.o)
 TOKENIZER_SRCS := tokenizer/src/tokenizer.c
 TOKENIZER_OBJS := $(TOKENIZER_SRCS:.c=.o)
 
-.PHONY: all clean test show
+.PHONY: all clean test show run
 
 all: $(ENGINE_SERIAL_OBJS) $(QPE_OBJS) $(QPE_EXES) $(TEST_BINS)
 
@@ -44,8 +44,8 @@ all: $(ENGINE_SERIAL_OBJS) $(QPE_OBJS) $(QPE_EXES) $(TEST_BINS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link rule for QPESeq (has a main)
-QPESeq: QPESeq.c $(ENGINE_SERIAL_OBJS)
-	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
+QPESeq: QPESeq.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
+	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Pattern rule for test executables (placed under build/tests)
 $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
@@ -90,3 +90,7 @@ clean:
 # Default goal if user just runs `make` without target
 .DEFAULT_GOAL := all
 
+
+# Run the main serial query processor
+run: QPESeq
+	./QPESeq

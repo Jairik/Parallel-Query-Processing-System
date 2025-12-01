@@ -62,7 +62,7 @@ typedef struct {
     LogicOperator logic_ops[4]; // Logic between conditions (AND/OR)
     int num_conditions;
 
-    char insert_values[10][256];
+    char insert_values[15][256];
     int num_values;
 
     char order_by[64];
