@@ -3,7 +3,7 @@
 #define _POSIX_C_SOURCE 200809L  // Enable strdup
 #include "../../include/buildEngine-serial.h"
 #include <string.h>
-#define VERBOSE 1  // Essentially testing mode
+#define VERBOSE 0  // Essentially testing mode
 
 // Forward declaration
 FieldType mapAttributeType(int attributeType);

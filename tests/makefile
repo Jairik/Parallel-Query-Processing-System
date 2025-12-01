@@ -5,14 +5,21 @@ ENGINE_DIR_MAIN = ../engine
 ENGINE_SOURCES = $(wildcard $(ENGINE_DIR)/*.c)
 ENGINE_OBJECTS = $(ENGINE_SOURCES:.c=.o)
 RECORD_SCHEMA_OBJ = $(ENGINE_DIR_MAIN)/recordSchema.o
+TOKENIZER_SRC = ../tokenizer/src/tokenizer.c
+TOKENIZER_OBJ = ../tokenizer/src/tokenizer.o
 
-TARGET = bplus-serial-test
-TEST_SOURCE = bplus-serial-test.c
+TARGETS = bplus-serial-test serial-SELECT-test
 
-all: $(TARGET)
+all: $(TARGETS)
 
-$(TARGET): $(TEST_SOURCE) $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ)
+bplus-serial-test: bplus-serial-test.c $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
+
+serial-SELECT-test: serial-SELECT-test.c $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ) $(TOKENIZER_OBJ)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(TOKENIZER_OBJ): $(TOKENIZER_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(ENGINE_DIR)/%.o: $(ENGINE_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -22,4 +29,4 @@ $(ENGINE_DIR_MAIN)/%.o: $(ENGINE_DIR_MAIN)/%.c
 
 
 clean:
-	rm -f $(TARGET) $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ)
+	rm -f $(TARGETS) $(ENGINE_OBJECTS) $(RECORD_SCHEMA_OBJ) $(TOKENIZER_OBJ)

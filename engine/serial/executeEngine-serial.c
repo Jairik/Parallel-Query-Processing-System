@@ -1,11 +1,11 @@
 /* Main engine functionality and whatnot */
 
 #define _POSIX_C_SOURCE 200809L  // Enable strdup
+#include <strings.h> // For strcasecmp
+#include <time.h> // For clock_t, clock(), CLOCKS_PER_SEC
 #include "../../include/buildEngine-serial.h"
 #include "../../include/executeEngine-serial.h"
-#include <time.h>  // Timing
-#include "executeEngine-serial.h"
-#define VERBOSE 1
+#define VERBOSE 0
 
 // Function pointer type for WHERE condition evaluation
 typedef bool (*where_condition_func)(void *record, void *value);
