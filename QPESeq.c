@@ -99,7 +99,7 @@ void free_where_clause_list(struct whereClauseS *head) {
 void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     printf("Testing Query: %s\n", query);
 
-    // 1. Tokenize
+    // Tokenize
     Token tokens[MAX_TOKENS];
     int num_tokens = tokenize(query, tokens, MAX_TOKENS);
     if (num_tokens <= 0) {
@@ -144,6 +144,11 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
         case CMD_NONE: {
 
         }
+
+        default: {
+            printf("Unsupported command.\n");
+            return;
+        }
     }
 
     // These will go in above switch statement
@@ -168,19 +173,19 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     printf("\n");
 }
 
-/* --- Main Functionality - intake commands from text file and process */
+/* --- Main Functionality - intake commands from text file and process --- */
 
 int main(int argc, char *argv[]) {
 
     // TODO load the COMMANDS into memory (from COMMAND text file)
+    
 
-
-    // TODO instantiate an engine object to handle the execution of the query
+    // Instantiate an engine object to handle the execution of the query
     struct engineS *engine = initializeEngineSerial(
-        1,
-        (const char *[]){"command_id"}, // Index on command_id for testing
-        (const int[]){0}, // Type 0 = integer
-        DATA_FILE,
+        1,  // Total number of indexes to start
+        (const char *[]){"command_id"},  // Default indexed attributes
+        (const int[]){0},  // Type 0 = integer
+        DATA_FILE,  // CSV filepath
         TABLE_NAME
     );
 
