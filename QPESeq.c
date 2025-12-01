@@ -106,14 +106,14 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
         return;
     }
 
-    // 2. Parse
+    // Parse - Determine which command is ran and extract components
     ParsedSQL parsed = parse_tokens(tokens);
-    if (parsed.command != CMD_SELECT) {
-        printf("Parser did not recognize SELECT command.\n");
-        return;
-    }
+    // if (parsed.command != CMD_SELECT) {
+    //     printf("Parser did not recognize SELECT command.\n");
+    //     return;
+    // }
 
-    // 3. Convert to Engine Arguments
+    // Convert to Engine Arguments
     const char **selectItems = NULL;
     int numSelectItems = 0;
 
@@ -124,10 +124,17 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
             selectItems[i] = parsed.columns[i];
         }
     }
+    // Handle non-SELECT commands here and return early
+    // TODO - Handle other commands like INSERT, DELETE, etc.
+    switch (parsed.command) {
+        case CMD_INSERT: {
+        }
+    }
 
+    // These will go in above switch statement
     struct whereClauseS *whereClause = convert_conditions(&parsed);
 
-    // 4. Execute
+    // Execute
     struct resultSetS *result = executeQuerySelectSerial(
         engine,
         selectItems,
@@ -136,13 +143,13 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
         whereClause
     );
 
-    // 5. Verify and Print
+    // Verify and Print
     printTable(NULL, result, max_rows);
 
-    // 6. Cleanup
-    if (result) freeResultSet(result);
-    if (selectItems) free(selectItems);
-    // free_where_clause_list(whereClause); // Optional for test
+    // Cleanup
+    if (result) freeResultSet(result);  // Free the results object
+    if (selectItems) free(selectItems);  // Free selected items array
+    free_where_clause_list(whereClause);  // Free where clause linked list
     printf("\n");
 }
 
@@ -150,8 +157,8 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
 
 int main(int argc, char *argv[]) {
 
-    // TODO load the COMMANDS into memory
-    
+    // TODO load the COMMANDS into memory (from COMMAND text file)
+
 
     // TODO instantiate an engine object to handle the execution of the query
     struct engineS *engine = initializeEngineSerial(
