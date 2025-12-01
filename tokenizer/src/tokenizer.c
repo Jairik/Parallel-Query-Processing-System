@@ -116,6 +116,7 @@ int tokenize(const char *input, Token tokens[], int max_tokens) {
 
 
 // ---- CONDITION NODE HELPERS ----
+// Creates a new ConditionNode. Returns NULL if memory allocation fails.
 ConditionNode *create_condition_node(void) {
     ConditionNode *node = (ConditionNode *)malloc(sizeof(ConditionNode));
     if (node) {

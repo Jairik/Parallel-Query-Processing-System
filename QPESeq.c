@@ -159,11 +159,11 @@ void free_where_clause_list(struct whereClauseS *head) {
             free_where_clause_list(temp->sub);
         }
         
-        // Free allocated strings
-        if (temp->attribute) free((void*)temp->attribute);
-        if (temp->operator) free((void*)temp->operator);
-        if (temp->value) free((void*)temp->value);
-        if (temp->logical_op) free((void*)temp->logical_op);
+        // Free allocated strings (strdup returns char*, cast needed due to const declaration)
+        free((char*)temp->attribute);
+        free((char*)temp->operator);
+        free((char*)temp->value);
+        free((char*)temp->logical_op);
         
         free(temp);
     }
@@ -202,27 +202,21 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     // Handle non-SELECT commands here and return early
     // TODO - Handle other commands like INSERT, DELETE, etc.
     switch (parsed.command) {
-        case CMD_INSERT: {
-        
-        }
-
-        case CMD_DELETE: {
-
-        }
-
-        case CMD_SELECT: {
-            // Handled below
-            break;
-        }
-
-        case CMD_NONE: {
-
-        }
-
-        default: {
+        case CMD_INSERT:
+            // Not implemented yet, fall through to unsupported
+            // falls through
+        case CMD_DELETE:
+            // Not implemented yet, fall through to unsupported  
+            // falls through
+        case CMD_NONE:
+            // No command recognized, fall through to unsupported
+            // falls through
+        default:
             printf("Unsupported command.\n");
             return;
-        }
+        case CMD_SELECT:
+            // Handled below
+            break;
     }
 
     // These will go in above switch statement
