@@ -3,7 +3,7 @@
 #ifndef BUILDTREE_SERIAL_H
 #define BUILDTREE_SERIAL_H
 
-#include "bplus-serial.h"
+#include "bplus.h"
 #include "executeEngine-serial.h"
 #include "logType.h"  // record struct
 #include "recordSchema.h"  // record schema helpers

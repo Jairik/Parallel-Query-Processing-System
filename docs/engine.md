@@ -13,7 +13,7 @@ Table of Contents
 
 ## Section 1 — B+ Tree
 
-Files: `include/bplus-serial.h`, `engine/serial/bplus-serial.c`
+Files: `include/bplus.h`, `engine/bplus.c`
 
 Purpose
 - Provide ordered, efficient indexing for attributes of records. Supports insertion/upsert, deletion (with rebalancing), single-key lookup, and range scan queries.
@@ -56,6 +56,7 @@ Design notes and caveats
 - The code uses fixed arrays sized by `ORDER`. Changing `ORDER` changes the node layout and requires the cut/split logic to remain correct.
 - Keys inserted into a specific index must all be the same `KEY_T.type`. Mixing types may produce inconsistent ordering.
 - The B+ tree implementation includes a leaf-level linked-list for efficient range traversal.
+- **Parallelization Note:** This B+ tree implementation is strictly serial and **cannot be safely parallelized** without significant architectural changes (e.g., fine-grained locking or latch crabbing). There is one shared version of the B+ tree used by all execution engines (Serial, OpenMP, MPI). Concurrent modifications will lead to race conditions and data corruption. Therefore, concurrentcy optimizations will be made *outside* of the data structure.
 
 ---
 
@@ -142,8 +143,8 @@ Utilities
 
 ## Section 4 — File / Function Cross Reference
 
-- `include/bplus-serial.h` — `node`, `KEY_T`, prototypes: `insert`, `delete`, `find_row`, `findRange`, `findLeaf`, `compare_keys`.
-- `engine/serial/bplus-serial.c` — B+ tree insertion, split, deletion, find, and printing.
+- `include/bplus.h` — `node`, `KEY_T`, prototypes: `insert`, `delete`, `find_row`, `findRange`, `findLeaf`, `compare_keys`.
+- `engine/bplus.c` — B+ tree insertion, split, deletion, find, and printing.
 - `engine/serial/buildEngine-serial.c` — `getAllRecordsFromFile`, `getRecordFromLine`, `loadIntoBplusTree`, `makeIndexSerial`.
 - `engine/recordSchema.c`, `include/recordSchema.h` — `extract_key_from_record`, `compare_key`, and `get_field_info`.
 - `engine/serial/executeEngine-serial.c` — query execution, WHERE evaluation, result formatting, persistence.

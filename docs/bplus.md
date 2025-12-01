@@ -44,13 +44,13 @@ Postgres, MySQL, and almost all RDBMSes use B+ trees for default indexing.
 
 The engine is structured into three core components:
 
-1. **bplus-serial.c**
+1. **bplus.c**
    Implements the B+ tree storage structure itself.
 
 2. **buildEngine-serial.c**
    Builds tables and creates B+ tree indexes over chosen attributes.
 
-3. **queryEngine-serial.c (planned)**
+3. **queryEngine-serial.c**
    Executes commands (SELECT, WHERE) and uses the B+ tree for fast lookups.
 
 ### Index Lifecycle
@@ -112,16 +112,17 @@ The current B+ tree implementation supports:
 
 ---
 
-## 🚀 Role in Future Parallel Processing
+## 🚀 Role in Parallel Processing
 
 As we extend the system into a **parallel** query engine:
 
-* B+ trees will be duplicated or partitioned across workers
-* Range scans can be split across threads
-* Indexes allow partition-aware scans rather than brute-force traversal
-* Operations like distributed merge-joins can rely on sorted leaf chains
+* **Shared Implementation:** There is one shared version of the B+ tree (`bplus.c`) used by all execution engines (Serial, OpenMP, MPI).
+* **No Internal Parallelism:** The B+ tree implementation itself is **not thread-safe** and cannot be safely parallelized internally (e.g., concurrent inserts are not supported).
+* **Parallel Usage:** Parallelism is achieved by higher-level engines (e.g., OpenMP, MPI) partitioning data or queries *before* accessing the B+ tree, or by using read-only concurrent access patterns where safe.
+* Indexes allow partition-aware scans rather than brute-force traversal.
+* Operations like distributed merge-joins can rely on sorted leaf chains.
 
-This makes the B+ tree a **central performance component** of the entire engine.
+This makes the B+ tree a **central performance component** of the entire engine, even though it is a serial data structure.
 
 ---
 

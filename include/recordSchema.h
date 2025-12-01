@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "logType.h"  // Record structs
-#include "bplus-serial.h"  // KEY_T
+#include "bplus.h"  // KEY_T
 
 // Metadata about each field in the record struct
 typedef enum {

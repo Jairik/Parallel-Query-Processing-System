@@ -3,8 +3,8 @@
  * Inspired by: https://www.programiz.com/dsa/b-plus-tree
  */
 
-#include "../../include/bplus-serial.h"
-#include "../../include/recordSchema.h"  // for compare_key and KEY_T
+#include "../include/bplus.h"
+#include "../include/recordSchema.h"  // for compare_key and KEY_T
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>

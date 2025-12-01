@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include "../include/bplus-serial.h"
+#include "../include/bplus.h"
 
 // Helper to create a KEY_T from uint64
 static inline KEY_T make_key_u64(uint64_t val) {

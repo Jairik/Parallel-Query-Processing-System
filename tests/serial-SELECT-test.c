@@ -3,8 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "executeEngine-serial.h"
-#include "sql.h"
+#include "../include/executeEngine-serial.h"
+#include "../include/sql.h"
+#include "../include/printHelper.h"
 
 // Constants for the test environment
 #define DATA_FILE "../data-generation/commands_50k.csv"

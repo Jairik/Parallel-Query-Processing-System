@@ -1,6 +1,6 @@
 /* Skeleton for the Serial Implementation - uses the bplus serial engine and tokenizer to execute a provided SQL query */
 
-#include "include/bplus-serial.h"
+#include "include/bplus.h"
 #include "include/executeEngine-serial.h"
 #include <stdbool.h>
 #include <stdio.h>

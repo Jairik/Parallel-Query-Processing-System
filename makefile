@@ -25,7 +25,7 @@ TEST_BIN_DIR := build/tests
 TEST_BINS    := $(patsubst tests/%.c,$(TEST_BIN_DIR)/%,$(TEST_SRCS))
 
 # Serial engine sources required for linking (only the modern B+ tree for now)
-ENGINE_SERIAL_SRCS := engine/serial/bplus-serial.c engine/recordSchema.c engine/serial/executeEngine-serial.c engine/serial/buildEngine-serial.c
+ENGINE_SERIAL_SRCS := engine/bplus.c engine/recordSchema.c engine/serial/executeEngine-serial.c engine/serial/buildEngine-serial.c
 ENGINE_SERIAL_OBJS := $(ENGINE_SERIAL_SRCS:.c=.o)
 
 # Tokenizer sources
@@ -58,10 +58,10 @@ $(TEST_BIN_DIR)/test_tokenizer_new: tests/test_tokenizer_new.c $(ENGINE_SERIAL_O
 	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Engine object build rule
-engine/serial/%.o: engine/serial/%.c include/bplus-serial.h
+engine/serial/%.o: engine/serial/%.c include/bplus.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-engine/%.o: engine/%.c include/recordSchema.h
+engine/%.o: engine/%.c include/bplus.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Tokenizer object build rule
