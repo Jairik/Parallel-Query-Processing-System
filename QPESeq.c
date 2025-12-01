@@ -63,8 +63,9 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
             node->value_type = 1; // String
         }
 
+        // TODO - Handle sub-expressions and nested conditions
         node->next = NULL;
-        node->sub = NULL; // Not handling nested conditions in this simple test converter
+        node->sub = NULL;
 
         // Set logical operator for the *previous* node to connect to this one
         // The parser stores logic ops between conditions. logic_ops[0] is between cond[0] and cond[1]
