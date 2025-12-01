@@ -128,6 +128,20 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     // TODO - Handle other commands like INSERT, DELETE, etc.
     switch (parsed.command) {
         case CMD_INSERT: {
+        
+        }
+        
+        case CMD_DELETE: {
+
+        }
+
+        case CMD_SELECT: {
+            // Handled below
+            break;
+        }
+
+        case CMD_NONE: {
+
         }
     }
 
