@@ -130,7 +130,7 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
         case CMD_INSERT: {
         
         }
-        
+
         case CMD_DELETE: {
 
         }
@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
         TABLE_NAME
     );
 
-    // TODO run each command from the command input file
+    // TODO run each command from the command input file (using defined run_test_query function defined above)
     
 
     return EXIT_SUCCESS;
