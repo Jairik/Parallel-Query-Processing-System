@@ -4,3 +4,7 @@ QPESeq
 build/tests/bplus-serial-test
 build/tests/test_tokenizer_new
 *.o
+build/tests/delete-test
+build/tests/duplicate-test
+build/tests/executeEngine-serial-test
+build/tests/serial-SELECT-test

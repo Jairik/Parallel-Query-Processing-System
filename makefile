@@ -48,9 +48,9 @@ QPESeq: QPESeq.c $(ENGINE_SERIAL_OBJS)
 	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Pattern rule for test executables (placed under build/tests)
-$(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS)
+$(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
 	@mkdir -p $(TEST_BIN_DIR)
-	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Special case: test_tokenizer_new needs tokenizer objects
 $(TEST_BIN_DIR)/test_tokenizer_new: tests/test_tokenizer_new.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
