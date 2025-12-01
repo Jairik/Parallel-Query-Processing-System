@@ -1,0 +1,14 @@
+Parallelize these parts for MPI and OMP
+    Finding a range of stuff
+    Tony: where clause lines 360-450
+    Sam: Insert function lines 530-610
+       Add to CSV
+       Add to B trees
+       Add to Array
+    Logan: Delete function lines 620-710
+      Remove from CSV
+      Remove from B trees
+      Remove from Array
+    Anyone:Line 753 Initialize engine
+    Ian: Line 813 Linear Search
+    Anyone:Build Engine Line 46 (easy) 

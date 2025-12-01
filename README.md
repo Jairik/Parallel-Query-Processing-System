@@ -4,8 +4,7 @@
 
 This project implements a parallel query-processing engine designed to run SQL-like queries over large, structured datasets using high-performance computing techniques. The goal is to build a lightweight, command-line database system that supports fast data ingestion, indexing, and query execution using a combination of:
 
-- LSM-Tree based storage
-- Secondary indexes
+- B+ tree based storage
 - Serial, OpenMP, and MPI execution modes
 - Parallel query evaluation and parallel data scanning
 
