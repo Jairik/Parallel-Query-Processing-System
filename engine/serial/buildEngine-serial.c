@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L  // Enable strdup
 #include "../../include/buildEngine-serial.h"
 #include <string.h>
+#include <strings.h>
 #define VERBOSE 0  // Essentially testing mode
 
 // Forward declaration
@@ -101,6 +102,49 @@ record **getAllRecordsFromFile(const char *filepath, int *num_records) {
     return records;  // Return the array of all records
 }
 
+/* Helper to parse a CSV field, handling quotes and commas */
+char *parseCSVField(char **cursor) {
+    char *start = *cursor;
+    if (*start == '\0' || *start == '\n' || *start == '\r') return NULL;
+
+    char *field = malloc(1024); // Allocate buffer for field
+    int i = 0;
+    bool in_quotes = false;
+
+    if (*start == '"') {
+        in_quotes = true;
+        start++; // Skip opening quote
+    }
+
+    while (*start != '\0' && *start != '\n' && *start != '\r') {
+        if (in_quotes) {
+            if (*start == '"') {
+                if (*(start + 1) == '"') {
+                    // Escaped quote
+                    field[i++] = '"';
+                    start += 2;
+                } else {
+                    // End of quoted field
+                    in_quotes = false;
+                    start++;
+                }
+            } else {
+                field[i++] = *start++;
+            }
+        } else {
+            if (*start == ',') {
+                start++; // Skip comma
+                break;
+            }
+            field[i++] = *start++;
+        }
+    }
+    
+    field[i] = '\0';
+    *cursor = start;
+    return field;
+}
+
 /* Get a record struct from a line of CSV data
  * Parameters:
  *   line - character array containing a line of CSV data
@@ -114,42 +158,59 @@ record *getRecordFromLine(char *line){
         return NULL;
     }
 
-    // Tokenize the line and populate the record fields
-    char *token = strtok(line, ",");  // command_id
-    if (token != NULL) new_record->command_id = strtoull(token, NULL, 10);
+    char *cursor = line;
+    char *token;
 
-    token = strtok(NULL, ",");  // raw_command
-    if (token != NULL) strncpy(new_record->raw_command, token, sizeof(new_record->raw_command));
+    // command_id
+    token = parseCSVField(&cursor);
+    if (token) { new_record->command_id = strtoull(token, NULL, 10); free(token); }
 
-    token = strtok(NULL, ",");  // base_command
-    if (token != NULL) strncpy(new_record->base_command, token, sizeof(new_record->base_command));
+    // raw_command
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->raw_command, token, sizeof(new_record->raw_command)); free(token); }
 
-    token = strtok(NULL, ",");  // shell_type
-    if (token != NULL) strncpy(new_record->shell_type, token, sizeof(new_record->shell_type));
+    // base_command
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->base_command, token, sizeof(new_record->base_command)); free(token); }
 
-    token = strtok(NULL, ",");  // exit_code
-    if (token != NULL) new_record->exit_code = atoi(token);
+    // shell_type
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->shell_type, token, sizeof(new_record->shell_type)); free(token); }
 
-    token = strtok(NULL, ",");  // timestamp
-    if (token != NULL) strncpy(new_record->timestamp, token, sizeof(new_record->timestamp));
+    // exit_code
+    token = parseCSVField(&cursor);
+    if (token) { new_record->exit_code = atoi(token); free(token); }
 
-    token = strtok(NULL, ",");  // sudo_used
-    if (token != NULL) new_record->sudo_used = atoi(token);
+    // timestamp
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->timestamp, token, sizeof(new_record->timestamp)); free(token); }
 
-    token = strtok(NULL, ",");  // working_directory
-    if (token != NULL) strncpy(new_record->working_directory, token, sizeof(new_record->working_directory));
+    // sudo_used
+    token = parseCSVField(&cursor);
+    if (token) { 
+        new_record->sudo_used = (strcasecmp(token, "true") == 0 || strcmp(token, "1") == 0); 
+        free(token); 
+    }
 
-    token = strtok(NULL, ",");  // user_id
-    if (token != NULL) new_record->user_id = atoi(token);
+    // working_directory
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->working_directory, token, sizeof(new_record->working_directory)); free(token); }
 
-    token = strtok(NULL, ",");  // user_name
-    if (token != NULL) strncpy(new_record->user_name, token, sizeof(new_record->user_name));
+    // user_id
+    token = parseCSVField(&cursor);
+    if (token) { new_record->user_id = atoi(token); free(token); }
 
-    token = strtok(NULL, ",");  // host_name
-    if (token != NULL) strncpy(new_record->host_name, token, sizeof(new_record->host_name));
+    // user_name
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->user_name, token, sizeof(new_record->user_name)); free(token); }
 
-    token = strtok(NULL, ",");  // risk_level
-    if (token != NULL) new_record->risk_level = atoi(token);
+    // host_name
+    token = parseCSVField(&cursor);
+    if (token) { strncpy(new_record->host_name, token, sizeof(new_record->host_name)); free(token); }
+
+    // risk_level
+    token = parseCSVField(&cursor);
+    if (token) { new_record->risk_level = atoi(token); free(token); }
 
     return new_record;  // Return the fully populated record
 }

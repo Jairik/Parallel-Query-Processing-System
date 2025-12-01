@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <assert.h>
 #include "../include/executeEngine-serial.h"
 #include "../include/sql.h"
@@ -140,7 +141,7 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
 }
 
 int main() {
-    printf("=== Starting Serial SELECT Test ===\n");
+    printf("\n=== Starting Serial SELECT Test ===\n\n");
 
     // 1. Initialize the Engine
     // We will index 'command_id' (UINT64) and 'risk_level' (INT) for this test

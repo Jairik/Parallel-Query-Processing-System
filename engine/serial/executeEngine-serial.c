@@ -3,6 +3,7 @@
 #define _POSIX_C_SOURCE 200809L  // Enable strdup
 #include <strings.h> // For strcasecmp
 #include <time.h> // For clock_t, clock(), CLOCKS_PER_SEC
+#include <limits.h> // For INT_MAX, INT_MIN, UINT64_MAX
 #include "../../include/buildEngine-serial.h"
 #include "../../include/executeEngine-serial.h"
 #define VERBOSE 0
@@ -77,6 +78,46 @@ CMP_STR(user_name, lt, <)
 CMP_STR(user_name, gte, >=)
 CMP_STR(user_name, lte, <=)
 
+// base_command (string)
+CMP_STR(base_command, eq, ==)
+CMP_STR(base_command, neq, !=)
+CMP_STR(base_command, gt, >)
+CMP_STR(base_command, lt, <)
+CMP_STR(base_command, gte, >=)
+CMP_STR(base_command, lte, <=)
+
+// shell_type (string)
+CMP_STR(shell_type, eq, ==)
+CMP_STR(shell_type, neq, !=)
+CMP_STR(shell_type, gt, >)
+CMP_STR(shell_type, lt, <)
+CMP_STR(shell_type, gte, >=)
+CMP_STR(shell_type, lte, <=)
+
+// timestamp (string)
+CMP_STR(timestamp, eq, ==)
+CMP_STR(timestamp, neq, !=)
+CMP_STR(timestamp, gt, >)
+CMP_STR(timestamp, lt, <)
+CMP_STR(timestamp, gte, >=)
+CMP_STR(timestamp, lte, <=)
+
+// working_directory (string)
+CMP_STR(working_directory, eq, ==)
+CMP_STR(working_directory, neq, !=)
+CMP_STR(working_directory, gt, >)
+CMP_STR(working_directory, lt, <)
+CMP_STR(working_directory, gte, >=)
+CMP_STR(working_directory, lte, <=)
+
+// host_name (string)
+CMP_STR(host_name, eq, ==)
+CMP_STR(host_name, neq, !=)
+CMP_STR(host_name, gt, >)
+CMP_STR(host_name, lt, <)
+CMP_STR(host_name, gte, >=)
+CMP_STR(host_name, lte, <=)
+
 // sudo_used (bool)
 CMP_NUM(sudo_used, bool, eq, ==)
 CMP_NUM(sudo_used, bool, neq, !=)
@@ -128,6 +169,41 @@ where_condition_func create_where_condition(const char *attribute, const char *o
         if (strcmp(operator, "<") == 0) return user_name_lt;
         if (strcmp(operator, ">=") == 0) return user_name_gte;
         if (strcmp(operator, "<=") == 0) return user_name_lte;
+    } else if (strcmp(attribute, "base_command") == 0) {
+        if (strcmp(operator, "=") == 0) return base_command_eq;
+        if (strcmp(operator, "!=") == 0) return base_command_neq;
+        if (strcmp(operator, ">") == 0) return base_command_gt;
+        if (strcmp(operator, "<") == 0) return base_command_lt;
+        if (strcmp(operator, ">=") == 0) return base_command_gte;
+        if (strcmp(operator, "<=") == 0) return base_command_lte;
+    } else if (strcmp(attribute, "shell_type") == 0) {
+        if (strcmp(operator, "=") == 0) return shell_type_eq;
+        if (strcmp(operator, "!=") == 0) return shell_type_neq;
+        if (strcmp(operator, ">") == 0) return shell_type_gt;
+        if (strcmp(operator, "<") == 0) return shell_type_lt;
+        if (strcmp(operator, ">=") == 0) return shell_type_gte;
+        if (strcmp(operator, "<=") == 0) return shell_type_lte;
+    } else if (strcmp(attribute, "timestamp") == 0) {
+        if (strcmp(operator, "=") == 0) return timestamp_eq;
+        if (strcmp(operator, "!=") == 0) return timestamp_neq;
+        if (strcmp(operator, ">") == 0) return timestamp_gt;
+        if (strcmp(operator, "<") == 0) return timestamp_lt;
+        if (strcmp(operator, ">=") == 0) return timestamp_gte;
+        if (strcmp(operator, "<=") == 0) return timestamp_lte;
+    } else if (strcmp(attribute, "working_directory") == 0) {
+        if (strcmp(operator, "=") == 0) return working_directory_eq;
+        if (strcmp(operator, "!=") == 0) return working_directory_neq;
+        if (strcmp(operator, ">") == 0) return working_directory_gt;
+        if (strcmp(operator, "<") == 0) return working_directory_lt;
+        if (strcmp(operator, ">=") == 0) return working_directory_gte;
+        if (strcmp(operator, "<=") == 0) return working_directory_lte;
+    } else if (strcmp(attribute, "host_name") == 0) {
+        if (strcmp(operator, "=") == 0) return host_name_eq;
+        if (strcmp(operator, "!=") == 0) return host_name_neq;
+        if (strcmp(operator, ">") == 0) return host_name_gt;
+        if (strcmp(operator, "<") == 0) return host_name_lt;
+        if (strcmp(operator, ">=") == 0) return host_name_gte;
+        if (strcmp(operator, "<=") == 0) return host_name_lte;
     } else if (strcmp(attribute, "sudo_used") == 0) {
         if (strcmp(operator, "=") == 0) return sudo_used_eq;
         if (strcmp(operator, "!=") == 0) return sudo_used_neq;
@@ -287,34 +363,68 @@ struct resultSetS *executeQuerySelectSerial(
 
                 // Use B+ tree index for this attribute
                 node *cur_root = engine->bplus_tree_roots[i]; // B+ tree root for this indexed attribute
+                FieldType type = engine->attribute_types[i];
                 
                 KEY_T key_start, key_end;
-                // Initialize keys based on operator
-                unsigned long long val = strtoull(wc->value, NULL, 10);
-                
-                // Determine range based on operator
-                if (strcmp(wc->operator, "=") == 0) {
-                    key_start.v.u64 = val;
-                    key_end.v.u64 = val;
-                } else if (strcmp(wc->operator, ">") == 0) {
-                    key_start.v.u64 = val + 1;
-                    key_end.v.u64 = UINT64_MAX;
-                } else if (strcmp(wc->operator, ">=") == 0) {
-                    key_start.v.u64 = val;
-                    key_end.v.u64 = UINT64_MAX;
-                } else if (strcmp(wc->operator, "<") == 0) {
-                    key_start.v.u64 = 0;
-                    key_end.v.u64 = val - 1;
-                } else if (strcmp(wc->operator, "<=") == 0) {
-                    key_start.v.u64 = 0;
-                    key_end.v.u64 = val;
+                bool typeSupported = true;
+
+                if (type == FIELD_UINT64) {
+                    unsigned long long val = strtoull(wc->value, NULL, 10);
+                    key_start.type = KEY_UINT64;
+                    key_end.type = KEY_UINT64;
+                    
+                    if (strcmp(wc->operator, "=") == 0) {
+                        key_start.v.u64 = val;
+                        key_end.v.u64 = val;
+                    } else if (strcmp(wc->operator, ">") == 0) {
+                        key_start.v.u64 = val + 1;
+                        key_end.v.u64 = UINT64_MAX;
+                    } else if (strcmp(wc->operator, ">=") == 0) {
+                        key_start.v.u64 = val;
+                        key_end.v.u64 = UINT64_MAX;
+                    } else if (strcmp(wc->operator, "<") == 0) {
+                        key_start.v.u64 = 0;
+                        key_end.v.u64 = val - 1;
+                    } else if (strcmp(wc->operator, "<=") == 0) {
+                        key_start.v.u64 = 0;
+                        key_end.v.u64 = val;
+                    } else {
+                        key_start.v.u64 = 0;
+                        key_end.v.u64 = UINT64_MAX;
+                    }
+                } else if (type == FIELD_INT) {
+                    int val = atoi(wc->value);
+                    key_start.type = KEY_INT;
+                    key_end.type = KEY_INT;
+                    
+                    if (strcmp(wc->operator, "=") == 0) {
+                        key_start.v.i32 = val;
+                        key_end.v.i32 = val;
+                    } else if (strcmp(wc->operator, ">") == 0) {
+                        key_start.v.i32 = val + 1;
+                        key_end.v.i32 = INT_MAX;
+                    } else if (strcmp(wc->operator, ">=") == 0) {
+                        key_start.v.i32 = val;
+                        key_end.v.i32 = INT_MAX;
+                    } else if (strcmp(wc->operator, "<") == 0) {
+                        key_start.v.i32 = INT_MIN;
+                        key_end.v.i32 = val - 1;
+                    } else if (strcmp(wc->operator, "<=") == 0) {
+                        key_start.v.i32 = INT_MIN;
+                        key_end.v.i32 = val;
+                    } else {
+                        key_start.v.i32 = INT_MIN;
+                        key_end.v.i32 = INT_MAX;
+                    }
                 } else {
-                    // Default/Fallback
-                    key_start.v.u64 = 0;
-                    key_end.v.u64 = UINT64_MAX;
+                    // Fallback for unsupported types in index search
+                    typeSupported = false;
+                    indexExists[i] = false;
                 }
-                key_start.type = KEY_UINT64;
-                key_end.type = KEY_UINT64;
+
+                if (!typeSupported) {
+                    continue;
+                }
 
                 // Allocating for keys, using num_records as upper bound.
                 KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));
