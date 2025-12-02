@@ -358,6 +358,8 @@ struct resultSetS *executeQuerySelectSerial(
     // Get all indexed attributes in the WHERE clause, using the B+ tree indexes where possible
     struct whereClauseS *wc = whereClause;
     while (wc != NULL) {
+        // Parallelized
+        #pragma omp parallel for
         for (int i = 0; i < engine->num_indexes; i++) {
             if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
                 anyIndexExists = true;
@@ -366,7 +368,7 @@ struct resultSetS *executeQuerySelectSerial(
                 // Use B+ tree index for this attribute
                 node *cur_root = engine->bplus_tree_roots[i]; // B+ tree root for this indexed attribute
                 FieldType type = engine->attribute_types[i];
-                
+
                 KEY_T key_start, key_end;
                 bool typeSupported = true;
 
@@ -374,7 +376,7 @@ struct resultSetS *executeQuerySelectSerial(
                     unsigned long long val = strtoull(wc->value, NULL, 10);
                     key_start.type = KEY_UINT64;
                     key_end.type = KEY_UINT64;
-                    
+
                     if (strcmp(wc->operator, "=") == 0) {
                         key_start.v.u64 = val;
                         key_end.v.u64 = val;
@@ -398,7 +400,7 @@ struct resultSetS *executeQuerySelectSerial(
                     int val = atoi(wc->value);
                     key_start.type = KEY_INT;
                     key_end.type = KEY_INT;
-                    
+
                     if (strcmp(wc->operator, "=") == 0) {
                         key_start.v.i32 = val;
                         key_end.v.i32 = val;
@@ -431,17 +433,27 @@ struct resultSetS *executeQuerySelectSerial(
                 // Allocating for keys, using num_records as upper bound.
                 KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));
                 ROW_PTR *returned_pointers = malloc(engine->num_records * sizeof(ROW_PTR));
-                
+
                 int num_found = findRange(cur_root, key_start, key_end, false, returned_keys, returned_pointers);
-                
+
                 // Add found records to matchingRecords
                 if (num_found > 0) {
-                    // Reallocate matchingRecords if needed (though we alloc'd max size initially)
-                    for (int k = 0; k < num_found; k++) {
-                        matchingRecords[matchCount++] = (record *)returned_pointers[k];
+                    int numthreads = omp_get_thread_num();
+                    if (num_found > numthreads * 3) {   // Parallelized
+                        // Reallocate matchingRecords if needed (though we alloc'd max size initially)
+                        #pragma for
+                        for (int k = 0; k < num_found; k++) {
+                            #pragma omp critical
+                            matchingRecords[matchCount++] = (record *)returned_pointers[k];
+                        }
+                    } else {    // Unparallelized
+                        // Reallocate matchingRecords if needed (though we alloc'd max size initially)
+                        for (int k = 0; k < num_found; k++) {
+                            matchingRecords[matchCount++] = (record *)returned_pointers[k];
+                        }
                     }
                 }
-                
+
                 free(returned_keys);
                 free(returned_pointers);
             }
