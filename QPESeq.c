@@ -10,6 +10,7 @@
 #include "../include/executeEngine-serial.h"
 #include "../include/sql.h"
 #include "../include/printHelper.h"
+#include <time.h>
 
 // Constants for the test environment
 #define DATA_FILE "data-generation/commands_50k.csv"
@@ -22,6 +23,17 @@ typedef struct node node;  // Pull node declaration from serial bplus
 typedef struct record record;  // Pull record declaration from serial bplus
 
 /* --- Helper functions --- */
+
+// Helper to safely copy strings with truncation
+static inline void safe_copy(char *dst, size_t n, const char *src) {
+    snprintf(dst, n, "%.*s", (int)n - 1, src);
+}
+
+// Helper to trim whitespace from a string
+static inline char* trim(char *s) {
+    while (*s && isspace((unsigned char)*s)) s++;
+    return s;
+}
 
 // Helper to map Parser OperatorType to string
 const char* get_operator_string(OperatorType op) {
@@ -71,9 +83,9 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
 
     for (int i = 0; i < parsed->num_conditions; i++) {
         struct whereClauseS *node = malloc(sizeof(struct whereClauseS));
-        node->attribute = strdup(parsed->conditions[i].column);
-        node->operator = strdup(get_operator_string(parsed->conditions[i].op));
-        node->value = strdup(parsed->conditions[i].value);
+        node->attribute = parsed->conditions[i].column;
+        node->operator = get_operator_string(parsed->conditions[i].op);
+        node->value = parsed->conditions[i].value;
         
         // Simple type inference for the test
         if (parsed->conditions[i].is_numeric) {
@@ -90,7 +102,7 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
         // Set logical operator for the *previous* node to connect to this one
         // The parser stores logic ops between conditions. logic_ops[0] is between cond[0] and cond[1]
         if (i < parsed->num_conditions - 1) {
-            node->logical_op = strdup(get_logic_op_string(parsed->logic_ops[i]));
+            node->logical_op = get_logic_op_string(parsed->logic_ops[i]);
         } else {
             node->logical_op = NULL;
         }
@@ -133,12 +145,11 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     ParsedSQL parsed = parse_tokens(tokens);
 
     // Convert to Engine Arguments
-    const char **selectItems = NULL;
+    const char *selectItems[parsed.num_columns > 0 ? parsed.num_columns : 1];
     int numSelectItems = 0;
 
     if (!parsed.select_all) {
         numSelectItems = parsed.num_columns;
-        selectItems = malloc(numSelectItems * sizeof(char*));
         for (int i = 0; i < numSelectItems; i++) {
             selectItems[i] = parsed.columns[i];
         }
@@ -153,23 +164,19 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
             }
             record r;
             r.command_id = strtoull(parsed.insert_values[0], NULL, 10);
-            snprintf(r.raw_command, sizeof(r.raw_command), "%.*s", (int)sizeof(r.raw_command)-1, parsed.insert_values[1]);
-            snprintf(r.base_command, sizeof(r.base_command), "%.*s", (int)sizeof(r.base_command)-1, parsed.insert_values[2]);
-            snprintf(r.shell_type, sizeof(r.shell_type), "%.*s", (int)sizeof(r.shell_type)-1, parsed.insert_values[3]);
+            safe_copy(r.raw_command, sizeof(r.raw_command), parsed.insert_values[1]);
+            safe_copy(r.base_command, sizeof(r.base_command), parsed.insert_values[2]);
+            safe_copy(r.shell_type, sizeof(r.shell_type), parsed.insert_values[3]);
             r.exit_code = atoi(parsed.insert_values[4]);
-            snprintf(r.timestamp, sizeof(r.timestamp), "%.*s", (int)sizeof(r.timestamp)-1, parsed.insert_values[5]);
+            safe_copy(r.timestamp, sizeof(r.timestamp), parsed.insert_values[5]);
             
             // Handle boolean sudo_used
-            if (strcasecmp(parsed.insert_values[6], "TRUE") == 0 || strcmp(parsed.insert_values[6], "1") == 0) {
-                r.sudo_used = true;
-            } else {
-                r.sudo_used = false;
-            }
+            r.sudo_used = (strcasecmp(parsed.insert_values[6], "true") == 0 || strcmp(parsed.insert_values[6], "1") == 0);
 
-            snprintf(r.working_directory, sizeof(r.working_directory), "%.*s", (int)sizeof(r.working_directory)-1, parsed.insert_values[7]);
+            safe_copy(r.working_directory, sizeof(r.working_directory), parsed.insert_values[7]);
             r.user_id = atoi(parsed.insert_values[8]);
-            snprintf(r.user_name, sizeof(r.user_name), "%.*s", (int)sizeof(r.user_name)-1, parsed.insert_values[9]);
-            snprintf(r.host_name, sizeof(r.host_name), "%.*s", (int)sizeof(r.host_name)-1, parsed.insert_values[10]);
+            safe_copy(r.user_name, sizeof(r.user_name), parsed.insert_values[9]);
+            safe_copy(r.host_name, sizeof(r.host_name), parsed.insert_values[10]);
             r.risk_level = atoi(parsed.insert_values[11]);
 
             if (executeQueryInsertSerial(engine, parsed.table, &r)) {
@@ -226,7 +233,6 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
 
     // Cleanup
     if (result) freeResultSet(result);  // Free the results object
-    if (selectItems) free(selectItems);  // Free selected items array
     free_where_clause_list(whereClause);  // Free where clause linked list
     printf("\n");
 }
@@ -237,6 +243,9 @@ int main(int argc, char *argv[]) {
     
     // NOTE: defaulting to sample queries file for ease of testing. Can implement CLI arg later.
     (void)argc; (void)argv; // Unused for now. Prevent warnings.
+
+    // Start a timer for total runtime statistics
+    clock_t totalStart = clock();
 
     // Instantiate an engine object to handle the execution of the query
     struct engineS *engine = initializeEngineSerial(
@@ -282,7 +291,7 @@ int main(int argc, char *argv[]) {
     char *query = strtok(buffer, ";");
     while (query) {
         // Trim whitespace
-        while (*query && isspace((unsigned char)*query)) query++;
+        query = trim(query);
         if (*query) {
             run_test_query(engine, query, ROW_LIMIT); // Limit output to 10 rows for testing
         }
@@ -291,6 +300,9 @@ int main(int argc, char *argv[]) {
 
     free(buffer);
     destroyEngineSerial(engine);
+
+    double totalTimeTaken = ((double)clock() - totalStart) / CLOCKS_PER_SEC;
+    printf("Total Execution Time For All Queries: %.4f seconds\n", totalTimeTaken);
 
     return EXIT_SUCCESS;
 }
