@@ -1,4 +1,4 @@
-/* Helper functions for QPE files. Used for testing with query text files. Cannot be reliably parralelized */
+/* Helper functions for some QPE files. Used for testing with query text files. Cannot be reliably parralelized */
 
 #define _POSIX_C_SOURCE 200809L // For strdup
 #include <stdio.h>
