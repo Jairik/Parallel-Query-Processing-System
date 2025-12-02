@@ -7,7 +7,11 @@
 #include "../../include/buildEngine-omp.h"
 #include "../../include/executeEngine-omp.h"
 #include <omp.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
 #define VERBOSE 0
+
 
 // Function pointer type for WHERE condition evaluation
 typedef bool (*where_condition_func)(void *record, void *value);
@@ -634,57 +638,89 @@ bool executeQueryInsertSerial(
     return success;
 }
 
-/* Main functionality for DELETE logic
- * Parameters:
- *   engine - constant engine object
- *   tableName - name of the table
- *   whereClause - WHERE clause (NULL for all rows)
- * Returns:
- *   ResultSet containing number of deleted records
- */
+
+// assumes these types / functions are declared elsewhere:
+//   struct engineS;
+//   struct resultSetS;
+//   struct whereClauseS;
+//   typedef ... KEY_T;
+//   typedef ... *ROW_PTR;
+//   typedef struct recordS record;
+//   bool evaluateWhereClause(record *rec, struct whereClauseS *whereClause);
+//   KEY_T extract_key_from_record(record *rec, const char *attr);
+//   void *delete(void *root, KEY_T key, ROW_PTR row_ptr);
+
 struct resultSetS *executeQueryDeleteSerial(
-    struct engineS *engine,  // Constant engine object
-    const char *tableName,  // Table to delete from
-    struct whereClauseS *whereClause  // WHERE clause (NULL for all rows)
+    struct engineS *engine,          // Constant engine object
+    const char *tableName,           // Table to delete from (unused here)
+    struct whereClauseS *whereClause // WHERE clause (NULL for all rows)
 ) {
     struct resultSetS *result = (struct resultSetS *)malloc(sizeof(struct resultSetS));
-    result->numRecords = 0;
-    result->numColumns = 0;
-    result->columnNames = NULL;
-    result->columnTypes = NULL;
-    result->data = NULL;
-    result->queryTime = 0.0;
-    result->success = false;
+    if (!result) {
+        return NULL;
+    }
 
-    clock_t start = clock();
+    result->numRecords   = 0;
+    result->numColumns   = 0;
+    result->columnNames  = NULL;
+    result->columnTypes  = NULL;
+    result->data         = NULL;
+    result->queryTime    = 0.0;
+    result->success      = false;
+
+    double start = omp_get_wtime();
+
+    int num_records = engine->num_records;
     int deletedCount = 0;
-    int writeIndex = 0;
 
-    // Iterate through all records in the engine
-    for (int i = 0; i < engine->num_records; i++) {
-        record *currentRecord = engine->all_records[i];
-        bool shouldDelete = false;
+    // 1) Parallel phase: compute delete flags
+    int *deleteFlags = (int *)calloc(num_records, sizeof(int));
+    if (!deleteFlags) {
+        return result; // result->success stays false
+    }
 
-        // Check if the record matches the WHERE clause
-        if (whereClause == NULL) {
-            shouldDelete = true; // Delete all if no WHERE clause
-        } else {
-            shouldDelete = evaluateWhereClause(currentRecord, whereClause);
+    #pragma omp parallel
+    {
+        int localDeleted = 0;
+
+        #pragma omp for nowait
+        for (int i = 0; i < num_records; i++) {
+            record *currentRecord = engine->all_records[i];
+            bool shouldDelete;
+
+            if (whereClause == NULL) {
+                shouldDelete = true;  // Delete all if no WHERE clause
+            } else {
+                shouldDelete = evaluateWhereClause(currentRecord, whereClause);
+            }
+
+            if (shouldDelete) {
+                deleteFlags[i] = 1;
+                localDeleted++;
+            }
         }
 
-        if (shouldDelete) {
-            // Delete the matched record
-            
-            // Remove from B+ Tree Indexes
+        #pragma omp atomic
+        deletedCount += localDeleted;
+    }
+
+    // 2) Serial phase: mutate engine, update B+ trees, free records, compact array
+    int writeIndex = 0;
+
+    for (int i = 0; i < num_records; i++) {
+        record *currentRecord = engine->all_records[i];
+
+        if (deleteFlags[i]) {
+            // Remove from B+ Tree indexes
             for (int j = 0; j < engine->num_indexes; j++) {
-                 const char *indexed_attr = engine->indexed_attributes[j];
-                 KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
-                 engine->bplus_tree_roots[j] = delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
+                const char *indexed_attr = engine->indexed_attributes[j];
+                KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
+                engine->bplus_tree_roots[j] =
+                    delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
             }
 
             // Free the record memory
             free(currentRecord);
-            deletedCount++;
         } else {
             // Keep the record, move it to the current write position if needed
             if (writeIndex != i) {
@@ -694,10 +730,12 @@ struct resultSetS *executeQueryDeleteSerial(
         }
     }
 
+    free(deleteFlags);
+
     // Update the record count in the engine
     engine->num_records = writeIndex;
 
-    // Rewrite the CSV file with the remaining records
+    // Rewrite the CSV file with the remaining records (serial)
     FILE *file = fopen(engine->datafile, "w");
     if (file != NULL) {
         for (int i = 0; i < engine->num_records; i++) {
@@ -718,16 +756,18 @@ struct resultSetS *executeQueryDeleteSerial(
         }
         fclose(file);
     } else {
-        if (VERBOSE) {
-            fprintf(stderr, "Failed to open data file for rewriting: %s\n", engine->datafile);
+        if ( VERBOSE ) {
+            fprintf(stderr,
+                    "Failed to open data file for rewriting: %s\n",
+                    engine->datafile);
         }
     }
 
-    double time_taken = ((double)clock() - start) / CLOCKS_PER_SEC;
-    
+    double time_taken = omp_get_wtime() - start;
+
     result->numRecords = deletedCount;
-    result->queryTime = time_taken;
-    result->success = true;
+    result->queryTime  = time_taken;
+    result->success    = true;
 
     return result;
 }
