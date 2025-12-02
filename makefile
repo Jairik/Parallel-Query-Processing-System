@@ -18,6 +18,8 @@ QPE_SRCS  := $(wildcard QPE*.c)
 QPE_OBJS  := $(QPE_SRCS:.c=.o)
 # Executables (only those sources that currently define a main). Adjust as others gain mains.
 QPE_EXES  := QPESeq
+CE SRCS    := connectEngine.c
+CE OBJS    := $(CE SRCS:.c=.o)
 
 # Test sources (all .c in tests directory)
 TEST_SRCS    := $(wildcard tests/*.c)
@@ -77,6 +79,10 @@ test: $(TEST_BINS)
 # Run the main serial query processor
 run: QPESeq
 	./QPESeq
+
+# Run QPESeq under Valgrind to check for memory leaks
+valgrind: QPESeq
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1 ./QPESeq
 
 # Show discovered source collections
 show:
