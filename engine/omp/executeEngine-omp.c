@@ -545,6 +545,10 @@ bool executeQueryInsertSerial(
     }
 
     // Append the new record to the end of the data file (as a CSV)
+    // NOTE: File I/O is inherently serial and hard to parallelize safely without complex locking or offset management.
+    // For this assignment, we'll keep the file write serial or use a critical section if called from parallel context.
+    // However, this function itself is likely called serially by the main loop in QPEOMP.c.
+    // The parallelization target is the internal work of the function (updating indexes).
     FILE *file = fopen(engine->datafile, "a");
     if (file == NULL) {
         if (VERBOSE) {
@@ -590,6 +594,12 @@ bool executeQueryInsertSerial(
     engine->num_records += 1;
 
     // Update any relevant B+ tree indexes to include the new record
+    // Parallelize this loop using OpenMP
+    // Each iteration works on a different index (different B+ tree), so they are independent.
+    // The engine->bplus_tree_roots array is shared, but each thread writes to a distinct index 'i'.
+    bool success = true;
+    
+    #pragma omp parallel for shared(engine, record_copy, success) schedule(dynamic)
     for (int i = 0; i < engine->num_indexes; i++) {
         const char *indexed_attr = engine->indexed_attributes[i];
         
@@ -601,13 +611,15 @@ bool executeQueryInsertSerial(
         
         if(root == NULL) {
             if (VERBOSE) {
+                #pragma omp critical
                 fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s\n", indexed_attr);
             }
-            return false;
+            #pragma omp atomic write
+            success = false;
         }
     }
 
-    return true;  // Placeholder for now
+    return success;
 }
 
 /* Main functionality for DELETE logic

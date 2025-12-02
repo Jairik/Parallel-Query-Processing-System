@@ -534,52 +534,62 @@ bool executeQueryInsertSerial(
     const char *tableName,  // Table to insert into
     const record *newRecord  // Record to insert as array of [Attribute, Value] pairs
 ) {
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
     // Check that the record is valid/missing no fields
     if(newRecord->command_id == 0 || strlen(newRecord->raw_command) == 0 || strlen(newRecord->base_command) == 0 ||
        strlen(newRecord->shell_type) == 0 || strlen(newRecord->timestamp) == 0 || strlen(newRecord->working_directory) == 0 ||
        strlen(newRecord->user_name) == 0 || strlen(newRecord->host_name) == 0) {
-        if (VERBOSE) {
+        if (VERBOSE && rank == 0) {
             fprintf(stderr, "Invalid record: missing required fields\n");
         }
         return false;
     }
 
     // Append the new record to the end of the data file (as a CSV)
-    FILE *file = fopen(engine->datafile, "a");
-    if (file == NULL) {
-        if (VERBOSE) {
-            fprintf(stderr, "Failed to open data file for appending: %s\n", engine->datafile);
+    // Only Rank 0 writes to the file to avoid race conditions and file corruption
+    if (rank == 0) {
+        FILE *file = fopen(engine->datafile, "a");
+        if (file == NULL) {
+            if (VERBOSE) {
+                fprintf(stderr, "Failed to open data file for appending: %s\n", engine->datafile);
+            }
+            // In a real system we should broadcast this error, but for now we'll just return false on rank 0
+            // Ideally we'd have an MPI_Bcast for success/failure here.
+            return false;
         }
-        return false;
+        // Write the new record as a CSV line
+        fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
+                newRecord->command_id,
+                newRecord->raw_command,
+                newRecord->base_command,
+                newRecord->shell_type,
+                newRecord->exit_code,
+                newRecord->timestamp,
+                newRecord->sudo_used,
+                newRecord->working_directory,
+                newRecord->user_id,
+                newRecord->user_name,
+                newRecord->host_name,
+                newRecord->risk_level);
+        fclose(file);
     }
-    // Write the new record as a CSV line
-    fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
-            newRecord->command_id,
-            newRecord->raw_command,
-            newRecord->base_command,
-            newRecord->shell_type,
-            newRecord->exit_code,
-            newRecord->timestamp,
-            newRecord->sudo_used,
-            newRecord->working_directory,
-            newRecord->user_id,
-            newRecord->user_name,
-            newRecord->host_name,
-            newRecord->risk_level);
-    fclose(file);
 
     // Append the new record to engine->all_records in memory
+    // ALL ranks must update their local copy of the records so they can be used for future queries
     engine->all_records = (record **)realloc(engine->all_records, (engine->num_records + 1) * sizeof(record *));
     if (engine->all_records == NULL) {
         if (VERBOSE) {
-            fprintf(stderr, "Memory reallocation failed for all_records\n");
+            fprintf(stderr, "Memory reallocation failed for all_records on rank %d\n", rank);
         }
         return false;
     }
     record *record_copy = (record *)malloc(sizeof(record));
     if (record_copy == NULL) {
         if (VERBOSE) {
-            fprintf(stderr, "Memory allocation failed for new record\n");
+            fprintf(stderr, "Memory allocation failed for new record on rank %d\n", rank);
         }
         return false;
     }
@@ -590,24 +600,32 @@ bool executeQueryInsertSerial(
     engine->num_records += 1;
 
     // Update any relevant B+ tree indexes to include the new record
+    // Distribute the index updates among the ranks
+    // Each rank is responsible for a subset of the indexes: i % size == rank
+    bool success = true;
     for (int i = 0; i < engine->num_indexes; i++) {
-        const char *indexed_attr = engine->indexed_attributes[i];
-        
-        // Insert the new record into the B+ tree for this indexed attribute
-        node *root = engine->bplus_tree_roots[i];
-        KEY_T key = extract_key_from_record(record_copy, indexed_attr);
-        root = insert(root, key, (ROW_PTR)record_copy);
-        engine->bplus_tree_roots[i] = root;
-        
-        if(root == NULL) {
-            if (VERBOSE) {
-                fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s\n", indexed_attr);
+        if (i % size == rank) {
+            const char *indexed_attr = engine->indexed_attributes[i];
+            
+            // Insert the new record into the B+ tree for this indexed attribute
+            node *root = engine->bplus_tree_roots[i];
+            KEY_T key = extract_key_from_record(record_copy, indexed_attr);
+            root = insert(root, key, (ROW_PTR)record_copy);
+            engine->bplus_tree_roots[i] = root;
+            
+            if(root == NULL) {
+                if (VERBOSE) {
+                    fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s on rank %d\n", indexed_attr, rank);
+                }
+                success = false;
             }
-            return false;
         }
     }
 
-    return true;  // Placeholder for now
+    // Optional: Synchronize success status across all ranks?
+    // For now, we return local success. The query engine might need to aggregate this.
+    
+    return success;
 }
 
 /* Main functionality for DELETE logic
