@@ -357,9 +357,14 @@ struct resultSetS *executeQuerySelectSerial(
     // Get all indexed attributes in the WHERE clause, using the B+ tree indexes where possible
     struct whereClauseS *wc = whereClause;
     while (wc != NULL) {
+        // Skip nested conditions for index lookup (they don't have a direct attribute)
+        if (wc->attribute == NULL) {
+            wc = wc->next;
+            continue;
+        }
+
         for (int i = 0; i < engine->num_indexes; i++) {
             if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
-                anyIndexExists = true;
                 indexExists[i] = true;
 
                 // Use B+ tree index for this attribute
@@ -426,6 +431,8 @@ struct resultSetS *executeQuerySelectSerial(
                 if (!typeSupported) {
                     continue;
                 }
+
+                anyIndexExists = true;
 
                 // Allocating for keys, using num_records as upper bound.
                 KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));

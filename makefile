@@ -107,9 +107,26 @@ test: $(TEST_BINS)
 	@set -e; for t in $(TEST_BINS); do echo "==> $$t"; $$t || exit 1; done
 	@echo "All tests completed."
 
-# Run the main serial query processor
+# Run the serial version
 run: QPESeq
 	./QPESeq
+
+# Default OpenMP thread count unless overridden
+OMP_THREADS ?= 4
+
+# Run OpenMP version correctly — env var applies only to this command
+run-omp: QPEOMP
+	@echo "Running with OMP_NUM_THREADS=$(OMP_THREADS)"
+	@env OMP_NUM_THREADS=$(OMP_THREADS) ./QPEOMP
+
+# Default MPI process count unless overridden
+MPI_PROCS ?= 4
+
+# Run MPI version with proper launcher syntax
+run-mpi: QPEMPI
+	@echo "Running with $(MPI_PROCS) MPI processes..."
+	@mpirun -np $(MPI_PROCS) ./QPEMPI 2>/dev/null \
+	 || mpiexec -np $(MPI_PROCS) ./QPEMPI
 
 # Run QPESeq under Valgrind to check for memory leaks
 valgrind: QPESeq
