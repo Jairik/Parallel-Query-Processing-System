@@ -7,6 +7,9 @@
 #include "../../include/buildEngine-mpi.h"
 #include "../../include/executeEngine-mpi.h"
 #include <mpi.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
 #define VERBOSE 0
 
 // Function pointer type for WHERE condition evaluation
@@ -628,100 +631,183 @@ bool executeQueryInsertSerial(
     return success;
 }
 
-/* Main functionality for DELETE logic
- * Parameters:
- *   engine - constant engine object
- *   tableName - name of the table
- *   whereClause - WHERE clause (NULL for all rows)
- * Returns:
- *   ResultSet containing number of deleted records
- */
-struct resultSetS *executeQueryDeleteSerial(
-    struct engineS *engine,  // Constant engine object
-    const char *tableName,  // Table to delete from
-    struct whereClauseS *whereClause  // WHERE clause (NULL for all rows)
+// assumes same external declarations as in the OpenMP version
+
+struct resultSetS *executeQueryDeleteMPI(
+    struct engineS *engine,
+    const char *tableName,
+    struct whereClauseS *whereClause,
+    MPI_Comm comm
 ) {
+    int rank, size;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &size);
+
     struct resultSetS *result = (struct resultSetS *)malloc(sizeof(struct resultSetS));
-    result->numRecords = 0;
-    result->numColumns = 0;
-    result->columnNames = NULL;
-    result->columnTypes = NULL;
-    result->data = NULL;
-    result->queryTime = 0.0;
-    result->success = false;
+    if (!result) {
+        return NULL;
+    }
 
-    clock_t start = clock();
-    int deletedCount = 0;
-    int writeIndex = 0;
+    result->numRecords   = 0;
+    result->numColumns   = 0;
+    result->columnNames  = NULL;
+    result->columnTypes  = NULL;
+    result->data         = NULL;
+    result->queryTime    = 0.0;
+    result->success      = false;
 
-    // Iterate through all records in the engine
-    for (int i = 0; i < engine->num_records; i++) {
-        record *currentRecord = engine->all_records[i];
-        bool shouldDelete = false;
+    double start = MPI_Wtime();
 
-        // Check if the record matches the WHERE clause
+    // We assume num_records is the same on all ranks (e.g., broadcasted beforehand if needed)
+    int num_records = engine->num_records;
+
+    // Block partition of records across ranks
+    int base = num_records / size;
+    int rem  = num_records % size;
+
+    int local_n;
+    int local_start;
+
+    if (rank < rem) {
+        local_n     = base + 1;
+        local_start = rank * (base + 1);
+    } else {
+        local_n     = base;
+        local_start = rem * (base + 1) + (rank - rem) * base;
+    }
+
+    // Local flags for this rank's chunk
+    int *localFlags = (local_n > 0)
+        ? (int *)calloc(local_n, sizeof(int))
+        : NULL;
+
+    int localDeleted = 0;
+
+    // Local WHERE evaluation
+    for (int i = 0; i < local_n; i++) {
+        int globalIdx = local_start + i;
+        record *currentRecord = engine->all_records[globalIdx];
+        bool shouldDelete;
+
         if (whereClause == NULL) {
-            shouldDelete = true; // Delete all if no WHERE clause
+            shouldDelete = true;
         } else {
             shouldDelete = evaluateWhereClause(currentRecord, whereClause);
         }
 
         if (shouldDelete) {
-            // Delete the matched record
-            
-            // Remove from B+ Tree Indexes
-            for (int j = 0; j < engine->num_indexes; j++) {
-                 const char *indexed_attr = engine->indexed_attributes[j];
-                 KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
-                 engine->bplus_tree_roots[j] = delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
-            }
+            localFlags[i] = 1;
+            localDeleted++;
+        }
+    }
 
-            // Free the record memory
-            free(currentRecord);
-            deletedCount++;
+    // Total deleted count across all ranks
+    int globalDeleted = 0;
+    MPI_Reduce(&localDeleted, &globalDeleted, 1, MPI_INT, MPI_SUM, 0, comm);
+
+    // Gather all flags on rank 0
+    int *recvCounts = NULL;
+    int *displs     = NULL;
+    int *globalFlags = NULL;
+
+    if (rank == 0) {
+        recvCounts = (int *)malloc(size * sizeof(int));
+        displs     = (int *)malloc(size * sizeof(int));
+    }
+
+    // Each rank sends its local_n
+    MPI_Gather(&local_n, 1, MPI_INT,
+               recvCounts, 1, MPI_INT,
+               0, comm);
+
+    if (rank == 0) {
+        int offset = 0;
+        for (int r = 0; r < size; r++) {
+            displs[r]     = offset;
+            offset       += recvCounts[r];
+        }
+
+        globalFlags = (int *)calloc(num_records, sizeof(int));
+    }
+
+    MPI_Gatherv(localFlags, local_n, MPI_INT,
+                globalFlags, recvCounts, displs, MPI_INT,
+                0, comm);
+
+    if (localFlags) {
+        free(localFlags);
+    }
+
+    // Rank 0 applies deletions, updates indexes, compacts array, writes CSV
+    if (rank == 0) {
+        int writeIndex = 0;
+
+        for (int i = 0; i < num_records; i++) {
+            record *currentRecord = engine->all_records[i];
+
+            if (globalFlags[i]) {
+                // Remove from B+ Tree Indexes
+                for (int j = 0; j < engine->num_indexes; j++) {
+                    const char *indexed_attr = engine->indexed_attributes[j];
+                    KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
+                    engine->bplus_tree_roots[j] =
+                        delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
+                }
+
+                // Free record memory
+                free(currentRecord);
+            } else {
+                // Keep record and compact
+                if (writeIndex != i) {
+                    engine->all_records[writeIndex] = currentRecord;
+                }
+                writeIndex++;
+            }
+        }
+
+        engine->num_records = writeIndex;
+
+        // Rewrite CSV with remaining records
+        FILE *file = fopen(engine->datafile, "w");
+        if (file != NULL) {
+            for (int i = 0; i < engine->num_records; i++) {
+                record *r = engine->all_records[i];
+                fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
+                    r->command_id,
+                    r->raw_command,
+                    r->base_command,
+                    r->shell_type,
+                    r->exit_code,
+                    r->timestamp,
+                    r->sudo_used,
+                    r->working_directory,
+                    r->user_id,
+                    r->user_name,
+                    r->host_name,
+                    r->risk_level);
+            }
+            fclose(file);
         } else {
-            // Keep the record, move it to the current write position if needed
-            if (writeIndex != i) {
-                engine->all_records[writeIndex] = currentRecord;
+            if (VERBOSE) {
+                fprintf(stderr,
+                        "Failed to open data file for rewriting: %s\n",
+                        engine->datafile);
             }
-            writeIndex++;
         }
-    }
 
-    // Update the record count in the engine
-    engine->num_records = writeIndex;
+        double time_taken = MPI_Wtime() - start;
 
-    // Rewrite the CSV file with the remaining records
-    FILE *file = fopen(engine->datafile, "w");
-    if (file != NULL) {
-        for (int i = 0; i < engine->num_records; i++) {
-            record *r = engine->all_records[i];
-            fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
-                r->command_id,
-                r->raw_command,
-                r->base_command,
-                r->shell_type,
-                r->exit_code,
-                r->timestamp,
-                r->sudo_used,
-                r->working_directory,
-                r->user_id,
-                r->user_name,
-                r->host_name,
-                r->risk_level);
-        }
-        fclose(file);
+        result->numRecords = globalDeleted;
+        result->queryTime  = time_taken;
+        result->success    = true;
+
+        if (globalFlags) free(globalFlags);
+        if (recvCounts)  free(recvCounts);
+        if (displs)      free(displs);
     } else {
-        if (VERBOSE) {
-            fprintf(stderr, "Failed to open data file for rewriting: %s\n", engine->datafile);
-        }
+        // Non-root ranks: result is not meaningful; optionally set success=false explicitly
+        result->success = false;
     }
-
-    double time_taken = ((double)clock() - start) / CLOCKS_PER_SEC;
-    
-    result->numRecords = deletedCount;
-    result->queryTime = time_taken;
-    result->success = true;
 
     return result;
 }
