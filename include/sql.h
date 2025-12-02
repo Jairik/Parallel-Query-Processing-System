@@ -44,14 +44,18 @@ typedef struct {
     char value[256]; // Increased size for long strings
 } Token;
 
+typedef struct ParsedSQL ParsedSQL;
+
 typedef struct {
     char column[64];
     OperatorType op;
     char value[256]; // Value to compare against
     bool is_numeric; // Whether the value is a number or string/bool
+    bool is_nested;
+    ParsedSQL *nested_sql;
 } Condition;
 
-typedef struct {
+typedef struct ParsedSQL {
     CommandType command;
     char table[64];
     char columns[10][64]; // Up to 10 columns selected
@@ -77,6 +81,7 @@ int tokenize(const char *input, Token tokens[], int max_tokens);
 
 // Parser
 ParsedSQL parse_tokens(Token tokens[]);
+void free_parsed_sql(ParsedSQL *sql);
 
 // Dispatcher removed
 

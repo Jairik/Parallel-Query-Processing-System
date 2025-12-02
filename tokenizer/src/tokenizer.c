@@ -112,6 +112,80 @@ int tokenize(const char *input, Token tokens[], int max_tokens) {
     return i;
 }
 
+// Helper to parse conditions recursively
+void parse_conditions(Token tokens[], int *i, ParsedSQL *sql) {
+    while (tokens[*i].type != TOKEN_EOF && 
+           strcmp(tokens[*i].value, "ORDER") != 0 && 
+           strcmp(tokens[*i].value, ";") != 0 &&
+           strcmp(tokens[*i].value, ")") != 0) { // Stop at ) for nested
+        
+        if (sql->num_conditions >= 5) break;
+
+        Condition *cond = &sql->conditions[sql->num_conditions];
+        cond->is_nested = false;
+        cond->nested_sql = NULL;
+
+        // Check for nested condition
+        if (strcmp(tokens[*i].value, "(") == 0) {
+            (*i)++; // consume '('
+            cond->is_nested = true;
+            cond->nested_sql = malloc(sizeof(ParsedSQL));
+            memset(cond->nested_sql, 0, sizeof(ParsedSQL));
+            
+            parse_conditions(tokens, i, cond->nested_sql);
+            
+            if (strcmp(tokens[*i].value, ")") == 0) {
+                (*i)++; // consume ')'
+            }
+        } else {
+            // Normal condition parsing
+            // Column
+            if (tokens[*i].type == TOKEN_IDENTIFIER) {
+                strcpy(cond->column, tokens[*i].value);
+                (*i)++;
+            }
+
+            // Operator
+            if (strcmp(tokens[*i].value, "=") == 0) cond->op = OP_EQ;
+            else if (strcmp(tokens[*i].value, "!=") == 0) cond->op = OP_NEQ;
+            else if (strcmp(tokens[*i].value, ">") == 0) cond->op = OP_GT;
+            else if (strcmp(tokens[*i].value, "<") == 0) cond->op = OP_LT;
+            else if (strcmp(tokens[*i].value, ">=") == 0) cond->op = OP_GTE;
+            else if (strcmp(tokens[*i].value, "<=") == 0) cond->op = OP_LTE;
+            else cond->op = OP_NONE;
+            (*i)++;
+
+            // Value
+            if (tokens[*i].type == TOKEN_STRING) {
+                strcpy(cond->value, tokens[*i].value);
+                cond->is_numeric = false;
+                (*i)++;
+            } else if (tokens[*i].type == TOKEN_NUMBER) {
+                strcpy(cond->value, tokens[*i].value);
+                cond->is_numeric = true;
+                (*i)++;
+            } else if (tokens[*i].type == TOKEN_KEYWORD && (strcmp(tokens[*i].value, "TRUE") == 0 || strcmp(tokens[*i].value, "FALSE") == 0)) {
+                    strcpy(cond->value, tokens[*i].value);
+                    cond->is_numeric = false; // Treat boolean as string for now
+                    (*i)++;
+            }
+        }
+
+        sql->num_conditions++;
+
+        // Logic Op
+        if (strcmp(tokens[*i].value, "AND") == 0) {
+            sql->logic_ops[sql->num_conditions-1] = LOGIC_AND;
+            (*i)++;
+        } else if (strcmp(tokens[*i].value, "OR") == 0) {
+            sql->logic_ops[sql->num_conditions-1] = LOGIC_OR;
+            (*i)++;
+        } else {
+            sql->logic_ops[sql->num_conditions-1] = LOGIC_NONE;
+        }
+    }
+}
+
 
 // ---- PARSER ----
 ParsedSQL parse_tokens(Token tokens[]) {
@@ -163,61 +237,7 @@ ParsedSQL parse_tokens(Token tokens[]) {
             // Parse WHERE
             if (strcmp(tokens[i].value, "WHERE") == 0) {
                 i++;
-                while (tokens[i].type != TOKEN_EOF && strcmp(tokens[i].value, "ORDER") != 0 && strcmp(tokens[i].value, ";") != 0) {
-                    if (sql.num_conditions >= 5) break;
-                    
-                    // Skip parentheses (temporary hack for nested queries support in parser)
-                    if (strcmp(tokens[i].value, "(") == 0 || strcmp(tokens[i].value, ")") == 0) {
-                        i++;
-                        continue;
-                    }
-
-                    Condition *cond = &sql.conditions[sql.num_conditions];
-                    
-                    // Column
-                    if (tokens[i].type == TOKEN_IDENTIFIER) {
-                        strcpy(cond->column, tokens[i].value);
-                        i++;
-                    }
-
-                    // Operator
-                    if (strcmp(tokens[i].value, "=") == 0) cond->op = OP_EQ;
-                    else if (strcmp(tokens[i].value, "!=") == 0) cond->op = OP_NEQ;
-                    else if (strcmp(tokens[i].value, ">") == 0) cond->op = OP_GT;
-                    else if (strcmp(tokens[i].value, "<") == 0) cond->op = OP_LT;
-                    else if (strcmp(tokens[i].value, ">=") == 0) cond->op = OP_GTE;
-                    else if (strcmp(tokens[i].value, "<=") == 0) cond->op = OP_LTE;
-                    else cond->op = OP_NONE;
-                    i++;
-
-                    // Value
-                    if (tokens[i].type == TOKEN_STRING) {
-                        strcpy(cond->value, tokens[i].value);
-                        cond->is_numeric = false;
-                        i++;
-                    } else if (tokens[i].type == TOKEN_NUMBER) {
-                        strcpy(cond->value, tokens[i].value);
-                        cond->is_numeric = true;
-                        i++;
-                    } else if (tokens[i].type == TOKEN_KEYWORD && (strcmp(tokens[i].value, "TRUE") == 0 || strcmp(tokens[i].value, "FALSE") == 0)) {
-                         strcpy(cond->value, tokens[i].value);
-                         cond->is_numeric = false; // Treat boolean as string for now
-                         i++;
-                    }
-
-                    sql.num_conditions++;
-
-                    // Logic Op
-                    if (strcmp(tokens[i].value, "AND") == 0) {
-                        sql.logic_ops[sql.num_conditions-1] = LOGIC_AND;
-                        i++;
-                    } else if (strcmp(tokens[i].value, "OR") == 0) {
-                        sql.logic_ops[sql.num_conditions-1] = LOGIC_OR;
-                        i++;
-                    } else {
-                        sql.logic_ops[sql.num_conditions-1] = LOGIC_NONE;
-                    }
-                }
+                parse_conditions(tokens, &i, &sql);
             }
 
             // Parse ORDER BY
@@ -271,55 +291,7 @@ ParsedSQL parse_tokens(Token tokens[]) {
             // Parse WHERE
             if (strcmp(tokens[i].value, "WHERE") == 0) {
                 i++;
-                while (tokens[i].type != TOKEN_EOF && strcmp(tokens[i].value, ";") != 0) {
-                    if (sql.num_conditions >= 5) break;
-                    
-                    Condition *cond = &sql.conditions[sql.num_conditions];
-                    
-                    // Column
-                    if (tokens[i].type == TOKEN_IDENTIFIER) {
-                        strcpy(cond->column, tokens[i].value);
-                        i++;
-                    }
-
-                    // Operator
-                    if (strcmp(tokens[i].value, "=") == 0) cond->op = OP_EQ;
-                    else if (strcmp(tokens[i].value, "!=") == 0) cond->op = OP_NEQ;
-                    else if (strcmp(tokens[i].value, ">") == 0) cond->op = OP_GT;
-                    else if (strcmp(tokens[i].value, "<") == 0) cond->op = OP_LT;
-                    else if (strcmp(tokens[i].value, ">=") == 0) cond->op = OP_GTE;
-                    else if (strcmp(tokens[i].value, "<=") == 0) cond->op = OP_LTE;
-                    else cond->op = OP_NONE;
-                    i++;
-
-                    // Value
-                    if (tokens[i].type == TOKEN_STRING) {
-                        strcpy(cond->value, tokens[i].value);
-                        cond->is_numeric = false;
-                        i++;
-                    } else if (tokens[i].type == TOKEN_NUMBER) {
-                        strcpy(cond->value, tokens[i].value);
-                        cond->is_numeric = true;
-                        i++;
-                    } else if (tokens[i].type == TOKEN_KEYWORD && (strcmp(tokens[i].value, "TRUE") == 0 || strcmp(tokens[i].value, "FALSE") == 0)) {
-                         strcpy(cond->value, tokens[i].value);
-                         cond->is_numeric = false; // Treat boolean as string for now
-                         i++;
-                    }
-
-                    sql.num_conditions++;
-
-                    // Logic Op
-                    if (strcmp(tokens[i].value, "AND") == 0) {
-                        sql.logic_ops[sql.num_conditions-1] = LOGIC_AND;
-                        i++;
-                    } else if (strcmp(tokens[i].value, "OR") == 0) {
-                        sql.logic_ops[sql.num_conditions-1] = LOGIC_OR;
-                        i++;
-                    } else {
-                        sql.logic_ops[sql.num_conditions-1] = LOGIC_NONE;
-                    }
-                }
+                parse_conditions(tokens, &i, &sql);
             }
         }
         else {
@@ -328,4 +300,14 @@ ParsedSQL parse_tokens(Token tokens[]) {
     }
 
     return sql;
+}
+
+void free_parsed_sql(ParsedSQL *sql) {
+    for (int i = 0; i < sql->num_conditions; i++) {
+        if (sql->conditions[i].is_nested && sql->conditions[i].nested_sql) {
+            free_parsed_sql(sql->conditions[i].nested_sql);
+            free(sql->conditions[i].nested_sql);
+            sql->conditions[i].nested_sql = NULL;
+        }
+    }
 }

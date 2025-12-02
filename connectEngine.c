@@ -70,21 +70,28 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
 
     for (int i = 0; i < parsed->num_conditions; i++) {
         struct whereClauseS *node = malloc(sizeof(struct whereClauseS));
-        node->attribute = parsed->conditions[i].column;
-        node->operator = get_operator_string(parsed->conditions[i].op);
-        node->value = parsed->conditions[i].value;
         
-        // Simple type inference for the test
-        if (parsed->conditions[i].is_numeric) {
-            node->value_type = 0; // Integer/Number
+        if (parsed->conditions[i].is_nested && parsed->conditions[i].nested_sql) {
+            node->attribute = NULL;
+            node->operator = NULL;
+            node->value = NULL;
+            node->value_type = 0;
+            node->sub = convert_conditions(parsed->conditions[i].nested_sql);
         } else {
-            node->value_type = 1; // String
+            node->attribute = parsed->conditions[i].column;
+            node->operator = get_operator_string(parsed->conditions[i].op);
+            node->value = parsed->conditions[i].value;
+            
+            // Simple type inference for the test
+            if (parsed->conditions[i].is_numeric) {
+                node->value_type = 0; // Integer/Number
+            } else {
+                node->value_type = 1; // String
+            }
+            node->sub = NULL;
         }
 
-        // TODO - Handle sub-expressions and nested conditions
-        // Note: Nested conditions are not currently supported by the test
         node->next = NULL;
-        node->sub = NULL;
 
         // Set logical operator for the *previous* node to connect to this one
         // The parser stores logic ops between conditions. logic_ops[0] is between cond[0] and cond[1]
@@ -120,7 +127,7 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
     // Print query for testing
     printf("Executing Query: %s\n", query);
 
-    // Tokenize
+    // Tokenize the provided query
     Token tokens[MAX_TOKENS];
     int num_tokens = tokenize(query, tokens, MAX_TOKENS);
     if (num_tokens <= 0) {
@@ -142,13 +149,15 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
         }
     }
 
-    // Handle non-SELECT commands here and return early
+    // Execute based on command type
     switch (parsed.command) {
         case CMD_INSERT: {
             if (parsed.num_values != 12) {
                 printf("Error: INSERT requires exactly 12 values.\n");
                 return;
             }
+
+            // Assign arguments to a record struct
             record r;
             r.command_id = strtoull(parsed.insert_values[0], NULL, 10);
             safe_copy(r.raw_command, sizeof(r.raw_command), parsed.insert_values[1]);
@@ -166,30 +175,56 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
             safe_copy(r.host_name, sizeof(r.host_name), parsed.insert_values[10]);
             r.risk_level = atoi(parsed.insert_values[11]);
 
+            // Execute Insert
+            clock_t insertStart = clock();  // Start timer for benchmarking
             if (executeQueryInsertSerial(engine, parsed.table, &r)) {
-                printf("Insert successful.\n\n");
+                printf("Insert successful. Execution Time: %ld\n\n", (clock() - insertStart) / CLOCKS_PER_SEC);
             } else {
-                printf("Insert failed.\n\n");
+                printf("Insert failed. Execution Time: %ld\n\n", (clock() - insertStart) / CLOCKS_PER_SEC);
             }
+
             return;
         }
 
         case CMD_DELETE: {
+            // Get the WHERE clause from arguments
             struct whereClauseS *whereClause = convert_conditions(&parsed);
+            
+            // Execute delete
+            clock_t deleteStart = clock();  // Start timer for benchmarking
             struct resultSetS *result = executeQueryDeleteSerial(engine, parsed.table, whereClause);
+
             if (result) {
-                printf("Delete successful. Rows affected: %d\n", result->numRecords);
+                printf("Delete successful. Rows affected: %d. Execution Time: %ld\n\n", result->numRecords, ((clock() - deleteStart) / CLOCKS_PER_SEC));
                 freeResultSet(result);
             } else {
-                printf("Delete failed.\n");
+                printf("Delete failed. Execution Time: %ld\n\n", ((clock() - deleteStart) / CLOCKS_PER_SEC));
             }
+
             free_where_clause_list(whereClause);
             return;
         }
 
         case CMD_SELECT: {
-            // Handled below
-            break;
+            // Get the WHERE clause from arguments
+            struct whereClauseS *whereClause = convert_conditions(&parsed);
+
+            // Execute select
+            struct resultSetS *result = executeQuerySelectSerial(
+                engine,
+                selectItems,
+                numSelectItems,
+                parsed.table,
+                whereClause
+            );
+
+            // Verify and Print)
+            printTable(NULL, result, max_rows);  // Limit to max_rows for testing
+
+            // Cleanup
+            if (result) freeResultSet(result);  // Free the results object
+            free_where_clause_list(whereClause);  // Free where clause linked list
+            printf("\n");
         }
 
         case CMD_NONE: {
@@ -198,28 +233,8 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
         }
 
         default: {
-            printf("Unsupported command.\n");
+            fprintf(stderr, "Unsupported command.\n");
             return;
         }
     }
-
-    // Retreive the WHERE clause
-    struct whereClauseS *whereClause = convert_conditions(&parsed);
-
-    // Execute
-    struct resultSetS *result = executeQuerySelectSerial(
-        engine,
-        selectItems,
-        numSelectItems,
-        parsed.table,
-        whereClause
-    );
-
-    // Verify and Print
-    printTable(NULL, result, max_rows);
-
-    // Cleanup
-    if (result) freeResultSet(result);  // Free the results object
-    free_where_clause_list(whereClause);  // Free where clause linked list
-    printf("\n");
 }
