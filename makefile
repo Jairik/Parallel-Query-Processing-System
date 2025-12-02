@@ -17,9 +17,9 @@ LDLIBS   :=
 QPE_SRCS  := $(wildcard QPE*.c)
 QPE_OBJS  := $(QPE_SRCS:.c=.o)
 # Executables (only those sources that currently define a main). Adjust as others gain mains.
-QPE_EXES  := QPESeq
-CE SRCS    := connectEngine.c
-CE OBJS    := $(CE SRCS:.c=.o)
+QPE_EXES  := QPESeq QPEOMP
+CE_SRCS    := connectEngine.c
+CE_OBJS    := $(CE_SRCS:.c=.o)
 
 # Test sources (all .c in tests directory)
 TEST_SRCS    := $(wildcard tests/*.c)
@@ -45,9 +45,17 @@ all: $(ENGINE_SERIAL_OBJS) $(QPE_OBJS) $(QPE_EXES) $(TEST_BINS)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Specific build rule for QPEOMP.o to include OpenMP flags
+QPEOMP.o: QPEOMP.c
+	$(CC) $(CFLAGS) -fopenmp -pthread -c $< -o $@
+
 # Link rule for QPESeq (has a main)
 QPESeq: QPESeq.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o
 	$(CC) $(CFLAGS) QPESeq.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
+
+# Link rule for QPEOMP (has a main, needs OpenMP)
+QPEOMP: QPEOMP.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o
+	$(CC) $(CFLAGS) -fopenmp -pthread QPEOMP.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Pattern rule for test executables (placed under build/tests)
 $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)

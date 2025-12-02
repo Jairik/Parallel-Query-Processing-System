@@ -57,6 +57,8 @@ int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
               KEY_T returned_keys[], ROW_PTR returned_pointers[]);
 node *findLeaf(node *const root, KEY_T key, bool verbose);
 
+/* Destroy a whole tree and free all nodes/arrays */
+void destroy_tree(node *root);
 // Key comparison function
 int compare_keys(const KEY_T *key1, const KEY_T *key2);
 

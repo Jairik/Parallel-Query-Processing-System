@@ -338,7 +338,8 @@ struct resultSetS *executeQuerySelectSerial(
     bool indexExists[engine->num_indexes];  // Track which indexes exist for WHERE attributes
 
     // Allocate space for matching records and result struct
-    record **matchingRecords = (record **)malloc(20 * sizeof(record *));  // Initial capacity of 20
+    // Use num_records as upper bound to avoid reallocating during index search
+    record **matchingRecords = (record **)malloc(engine->num_records * sizeof(record *));
     struct resultSetS *queryResults = (struct resultSetS *)malloc(sizeof(struct resultSetS));
     int matchCount = 0;
 
@@ -764,11 +765,43 @@ struct engineS *initializeEngineSerial(
 /* Safety destroys the engine, freeing all memory */
 void destroyEngineSerial(struct engineS *engine) {
     if (engine != NULL) {
-        free(engine->bplus_tree_roots);
-        free(engine->indexed_attributes);
-        free(engine->attribute_types);
-        free(engine->all_records);
+        /* Free: B+ tree roots (and their nodes) */
+        if (engine->bplus_tree_roots != NULL) {
+            for (int i = 0; i < engine->num_indexes; i++) {
+                if (engine->bplus_tree_roots[i] != NULL) {
+                    destroy_tree(engine->bplus_tree_roots[i]);
+                }
+            }
+            free(engine->bplus_tree_roots);
+        }
+
+        /* Free: indexed attribute names */
+        if (engine->indexed_attributes != NULL) {
+            for (int i = 0; i < engine->num_indexes; i++) {
+                if (engine->indexed_attributes[i] != NULL) free(engine->indexed_attributes[i]);
+            }
+            free(engine->indexed_attributes);
+        }
+
+        /* Free: attribute types array */
+        if (engine->attribute_types != NULL) free(engine->attribute_types);
+
+        /* Free: all records allocated from file */
+        if (engine->all_records != NULL) {
+            for (int i = 0; i < engine->num_records; i++) {
+                if (engine->all_records[i] != NULL) free(engine->all_records[i]);
+            }
+            free(engine->all_records);
+        }
+
+        /* Free: duplicated strings */
+        if (engine->tableName) free(engine->tableName);
+        if (engine->datafile) free(engine->datafile);
+
+        /* FREE ENGINE: END */
         free(engine);
+    } else {  // Engine should not be NULL, debug check
+        fprintf(stderr, "Attempted to destroy a NULL engine pointer\n");
     }
 }
 

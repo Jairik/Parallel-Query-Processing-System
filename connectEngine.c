@@ -1,3 +1,4 @@
+/* Helper functions for QPE files. Used for testing with query text files. Cannot be reliably parralelized */
 
 #define _POSIX_C_SOURCE 200809L // For strdup
 #include <stdio.h>
@@ -15,8 +16,6 @@
 // Forward declarations B+ tree implementation
 typedef struct node node;  // Pull node declaration from serial bplus
 typedef struct record record;  // Pull record declaration from serial bplus
-
-/* --- Helper functions --- */
 
 // Helper to safely copy strings with truncation
 static inline void safe_copy(char *dst, size_t n, const char *src) {
@@ -83,7 +82,7 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
         }
 
         // TODO - Handle sub-expressions and nested conditions
-        // Note: Nested conditions are not currently supported by the test harness
+        // Note: Nested conditions are not currently supported by the test
         node->next = NULL;
         node->sub = NULL;
 

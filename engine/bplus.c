@@ -39,6 +39,7 @@ int findRange(node *const root, KEY_T key_start, KEY_T key_end, bool verbose,
 node *findLeaf(node *const root, KEY_T key, bool verbose);                      // Descend to target leaf.
 ROW_PTR find_row(node *root, KEY_T key);                                        // Row lookup.
 int cut(int length);                                                            // Split helper (ceil(length/2)).
+void destroy_tree(node *root); /* Free entire tree */
 
 /* Allocation helpers */
 static node *makeNode(void);
@@ -418,13 +419,13 @@ static node *makeNode(void) {
         perror("Node creation.");
         exit(EXIT_FAILURE);
     }
-    new_node->keys = malloc((order - 1) * sizeof(KEY_T));
+    new_node->keys = calloc((order - 1), sizeof(KEY_T));
     if (new_node->keys == NULL)
     {
         perror("New node keys array.");
         exit(EXIT_FAILURE);
     }
-    new_node->pointers = malloc(order * sizeof(void *));
+    new_node->pointers = calloc(order, sizeof(void *));
     if (new_node->pointers == NULL)
     {
         perror("New node pointers array.");
@@ -529,6 +530,23 @@ static node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key, ROW
     KEY_T new_key = new_leaf->keys[0];
 
     return insertIntoParent(root, leaf, new_key, new_leaf);
+}
+
+/* destroy_tree: Frees all nodes and arrays used by the B+ tree. */
+void destroy_tree(node *root) {
+    if (root == NULL) return;
+
+    if (!root->is_leaf) {
+        for (int i = 0; i <= root->num_keys; i++) {
+            if (root->pointers[i] != NULL)
+                destroy_tree((node *)root->pointers[i]);
+        }
+    }
+
+    /* Free this node's arrays and node */
+    if (root->keys) free(root->keys);
+    if (root->pointers) free(root->pointers);
+    free(root);
 }
 
 /* ==================== Internal node insertion ==================== */
