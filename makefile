@@ -44,8 +44,8 @@ all: $(ENGINE_SERIAL_OBJS) $(QPE_OBJS) $(QPE_EXES) $(TEST_BINS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link rule for QPESeq (has a main)
-QPESeq: QPESeq.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
-	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
+QPESeq: QPESeq.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o
+	$(CC) $(CFLAGS) QPESeq.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Pattern rule for test executables (placed under build/tests)
 $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
@@ -74,6 +74,10 @@ test: $(TEST_BINS)
 	@set -e; for t in $(TEST_BINS); do echo "==> $$t"; $$t || exit 1; done
 	@echo "All tests completed."
 
+# Run the main serial query processor
+run: QPESeq
+	./QPESeq
+
 # Show discovered source collections
 show:
 	@echo "QPE_SRCS = $(QPE_SRCS)"
@@ -84,13 +88,8 @@ show:
 	@echo "ENGINE_SERIAL_SRCS = $(ENGINE_SERIAL_SRCS)"
 
 clean:
-	$(RM) $(QPE_EXES) $(QPE_OBJS) $(TEST_BINS) $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
+	$(RM) $(QPE_EXES) $(QPE_OBJS) $(TEST_BINS) $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) connectEngine.o
 	@echo "Cleaned build artifacts."
 
 # Default goal if user just runs `make` without target
 .DEFAULT_GOAL := all
-
-
-# Run the main serial query processor
-run: QPESeq
-	./QPESeq
