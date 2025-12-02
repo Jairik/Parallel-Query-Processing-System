@@ -909,27 +909,53 @@ int isAttributeIndexed(struct engineS *engine, const char *attributeName) {
 
 /* Performs a linear search through a given array of records based on the WHERE clause */
 record **linearSearchRecords(record **records, int num_records, struct whereClauseS *whereClause, int *matchingRecords) {
-    // Allocate space for results array
-    record **results = malloc(sizeof(record *));
     *matchingRecords = 0;
+    
+    // Phase 1: Parallel identification of matching records using flags
+    int *matchFlags = (int *)calloc(num_records, sizeof(int));
+    if (!matchFlags) {
+        return NULL; // Memory allocation failure
+    }
 
-    // Iterate through all records and apply WHERE clause filtering
-    for(int i = 0; i < num_records; i++) {
-        record *currentRecord = records[i];
-        bool matches = true;
+    #pragma omp parallel
+    {
+        int localMatches = 0;
 
-        if (whereClause != NULL) {
-            matches = evaluateWhereClause(currentRecord, whereClause);
+        #pragma omp for nowait
+        for(int i = 0; i < num_records; i++) {
+            record *currentRecord = records[i];
+            bool matches = true;
+
+            if (whereClause != NULL) {
+                matches = evaluateWhereClause(currentRecord, whereClause);
+            }
+
+            if (matches) {
+                matchFlags[i] = 1;
+                localMatches++;
+            }
         }
 
-        // If record matches all conditions, add to results
-        if (matches) {
-            results = realloc(results, (*matchingRecords + 1) * sizeof(record *));
-            results[*matchingRecords] = currentRecord;
-            (*matchingRecords)++;
+        #pragma omp atomic
+        *matchingRecords += localMatches;
+    }
+
+    // Phase 2: Serial collection of matching records into results array
+    record **results = malloc((*matchingRecords) * sizeof(record *));
+    if (!results) {
+        free(matchFlags);
+        return NULL; // Memory allocation failure
+    }
+
+    int writeIndex = 0;
+    for(int i = 0; i < num_records; i++) {
+        if (matchFlags[i]) {
+            results[writeIndex++] = records[i];
         }
     }
 
+    free(matchFlags);
+    
     // Return the array of matching records
     return results;
 }
