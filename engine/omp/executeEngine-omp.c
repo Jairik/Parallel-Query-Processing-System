@@ -815,11 +815,13 @@ struct engineS *initializeEngineSerial(
     engine->datafile = strdup(datafile);
     engine->all_records = getAllRecordsFromFile(datafile, &engine->num_records);  // Directly update record count
 
-    // Copy indexed attribute names and types into engine struct (defaults)
+    // Build B+ tree indexes in parallel - each index is independent
+    #pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < num_indexes; i++) {
         // Build B+ tree index for each indexed attribute
         bool success = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
         if (!success) {
+            #pragma omp critical
             fprintf(stderr, "Failed to create index for attribute: %s\n", indexed_attributes[i]);
         }
     }

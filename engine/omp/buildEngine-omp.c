@@ -43,19 +43,28 @@ node *loadIntoBplusTree(record **records, int num_records, const char *attribute
     // Instantiate the B+ tree root
     node *root = NULL;
     
-    // Iterate through each record and insert into the B+ tree
+    // Parallelize the iteration and insertion into the B+ tree
+    // Use critical section to protect tree modifications
+    #pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < num_records; i++) {
         
-        // Extract the current record as a key
+        // Extract the current record as a key (can be done in parallel)
         record *currentRecord = records[i];
         KEY_T key = extract_key_from_record(currentRecord, attributeName);
 
         // Insert the record into the B+ tree using the key
-        root = insert(root, key, (ROW_PTR)currentRecord);
+        // Critical section needed as tree structure is modified
+        #pragma omp critical
+        {
+            root = insert(root, key, (ROW_PTR)currentRecord);
+        }
 
         // Validate insertion via printing (only in verbose mode)
         if (VERBOSE) {
-            printTree(root);
+            #pragma omp critical
+            {
+                printTree(root);
+            }
         }
     }
 
