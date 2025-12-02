@@ -4,8 +4,8 @@
 #include <strings.h> // For strcasecmp
 #include <time.h> // For clock_t, clock(), CLOCKS_PER_SEC
 #include <limits.h> // For INT_MAX, INT_MIN, UINT64_MAX
-#include "../../include/buildEngine-serial.h"
-#include "../../include/executeEngine-serial.h"
+#include "../../include/buildEngine-omp.h"
+#include "../../include/executeEngine-omp.h"
 #include <omp.h>
 #define VERBOSE 0
 
