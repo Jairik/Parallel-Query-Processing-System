@@ -218,13 +218,14 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
                 whereClause
             );
 
-            // Verify and Print)
+            // Verify and Print
             printTable(NULL, result, max_rows);  // Limit to max_rows for testing
 
             // Cleanup
             if (result) freeResultSet(result);  // Free the results object
             free_where_clause_list(whereClause);  // Free where clause linked list
             printf("\n");
+            return;
         }
 
         case CMD_NONE: {
