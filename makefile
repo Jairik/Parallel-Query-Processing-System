@@ -66,8 +66,8 @@ QPESeq: QPESeq.o $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) connectEngine.o
 	$(CC) $(CFLAGS) QPESeq.o $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Link rule for QPEOMP (has a main, needs OpenMP)
-QPEOMP: QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) connectEngine.o
-	$(CC) $(CFLAGS) -fopenmp -pthread QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
+QPEOMP: QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS)
+	$(CC) $(CFLAGS) -fopenmp -pthread QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Link rule for QPEMPI (has a main, needs MPI)
 QPEMPI: QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS)

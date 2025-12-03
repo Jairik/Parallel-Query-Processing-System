@@ -6,27 +6,34 @@
 #include <string.h>
 #include <strings.h> // For strcasecmp
 #include <time.h>
+#include <ctype.h>
 #include <mpi.h>
-#include "../include/executeEngine-serial.h"
-#include "../include/connectEngine.h"
+#include "../include/executeEngine-mpi.h"
 #include "../include/printHelper.h"
+#include "../include/sql.h"
+
+// Constants
+#define DATA_FILE "data-generation/commands_50k.csv"
+#define TABLE_NAME "commands"
+#define MAX_TOKENS 100
+#define ROW_LIMIT 20
 
 // Optimal indexes constant
-const char* optimalIndexes[] = {
+static const char* optimalIndexes[] = {
     "command_id",
     "user_id",
     "risk_level",
     "exit_code",
     "sudo_used"
 };
-const FieldType optimalIndexTypes[] = {
+static const FieldType optimalIndexTypes[] = {
     FIELD_UINT64,
     FIELD_INT,
     FIELD_INT,
     FIELD_INT,
     FIELD_BOOL
 };
-const int numOptimalIndexes = 5;
+static const int numOptimalIndexes = 5;
 
 // ANSI color codes for pretty printing
 #define CYAN    "\x1b[36m"
@@ -34,13 +41,23 @@ const int numOptimalIndexes = 5;
 #define BOLD    "\x1b[1m"
 #define RESET   "\x1b[0m"
 
+// Helper to trim whitespace from a string
+static inline char* trim(char *s) {
+    while (*s && isspace((unsigned char)*s)) s++;
+    // Also trim trailing
+    char *end = s + strlen(s) - 1;
+    while (end > s && isspace((unsigned char)*end)) end--;
+    *(end + 1) = 0;
+    return s;
+}
+
 // Helper to safely copy strings with truncation
 static inline void safe_copy(char *dst, size_t n, const char *src) {
     snprintf(dst, n, "%.*s", (int)n - 1, src);
 }
 
 // Helper to map Parser OperatorType to string
-const char* get_operator_string(OperatorType op) {
+static const char* get_operator_string(OperatorType op) {
     switch (op) {
         case OP_EQ: return "=";
         case OP_NEQ: return "!=";
@@ -53,7 +70,7 @@ const char* get_operator_string(OperatorType op) {
 }
 
 // Helper to map Parser LogicOperator to string
-const char* get_logic_op_string(LogicOperator op) {
+static const char* get_logic_op_string(LogicOperator op) {
     switch (op) {
         case LOGIC_AND: return "AND";
         case LOGIC_OR: return "OR";
@@ -62,7 +79,7 @@ const char* get_logic_op_string(LogicOperator op) {
 }
 
 // Helper to convert ParsedSQL conditions to engine's whereClauseS linked list
-struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
+static struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
     if (parsed->num_conditions == 0) return NULL;
 
     struct whereClauseS *head = NULL;
@@ -111,7 +128,7 @@ struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
 }
 
 // Helper to free the manually constructed where clause
-void free_where_clause_list(struct whereClauseS *head) {
+static void free_where_clause_list(struct whereClauseS *head) {
     while (head) {
         struct whereClauseS *temp = head;
         head = head->next;
@@ -133,7 +150,7 @@ int main(int argc, char *argv[]) {
     double totalStart = MPI_Wtime();
 
     // Instantiate an engine object to handle the execution of the query
-    struct engineS *engine = initializeEngineSerial(
+    struct engineS *engine = initializeEngineMPI(
         numOptimalIndexes,  // Number of indexes
         optimalIndexes,  // Indexes to build B+ trees for
         (const int *)optimalIndexTypes,  // Index types
@@ -149,7 +166,7 @@ int main(int argc, char *argv[]) {
     FILE *fp = fopen(query_file, "r");
     if (!fp) {
         if (rank == 0) perror("Failed to open query file");
-        destroyEngineSerial(engine);
+        destroyEngineMPI(engine);
         MPI_Finalize();
         return EXIT_FAILURE;
     }
@@ -162,7 +179,7 @@ int main(int argc, char *argv[]) {
     if (!buffer) {
         if (rank == 0) perror("Failed to allocate memory for query file");
         fclose(fp);
-        destroyEngineSerial(engine);
+        destroyEngineMPI(engine);
         MPI_Finalize();
         return EXIT_FAILURE;
     }
@@ -171,7 +188,7 @@ int main(int argc, char *argv[]) {
         if (rank == 0) perror("Failed to read query file");
         free(buffer);
         fclose(fp);
-        destroyEngineSerial(engine);
+        destroyEngineMPI(engine);
         MPI_Finalize();
         return EXIT_FAILURE;
     }
@@ -238,18 +255,18 @@ int main(int argc, char *argv[]) {
                     safe_copy(r.host_name, sizeof(r.host_name), parsed.insert_values[10]);
                     r.risk_level = atoi(parsed.insert_values[11]);
 
-                    success = executeQueryInsertSerial(engine, parsed.table, &r);
+                    success = executeQueryInsertMPI(engine, parsed.table, &r);
                 }
             } 
             else if (parsed.command == CMD_DELETE) {
                 struct whereClauseS *whereClause = convert_conditions(&parsed);
-                result = executeQueryDeleteSerial(engine, parsed.table, whereClause);
+                result = executeQueryDeleteMPI(engine, parsed.table, whereClause);
                 if (result) rowsAffected = result->numRecords;
                 free_where_clause_list(whereClause);
             } 
             else if (parsed.command == CMD_SELECT) {
                 struct whereClauseS *whereClause = convert_conditions(&parsed);
-                result = executeQuerySelectSerial(engine, selectItems, numSelectItems, parsed.table, whereClause);
+                result = executeQuerySelectMPI(engine, selectItems, numSelectItems, parsed.table, whereClause);
                 free_where_clause_list(whereClause);
             }
             
@@ -308,7 +325,7 @@ int main(int argc, char *argv[]) {
     printf("Rank %d: Freeing buffer...\n", rank);
     free(buffer);
     printf("Rank %d: Destroying engine...\n", rank);
-    destroyEngineSerial(engine);
+    destroyEngineMPI(engine);
     printf("Rank %d: Finalizing MPI...\n", rank);
 
     MPI_Finalize();

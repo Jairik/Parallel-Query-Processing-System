@@ -330,7 +330,7 @@ bool evaluateWhereClause(record *r, struct whereClauseS *wc) {
 * Returns:
 *    A 
 */
-struct resultSetS *executeQuerySelectSerial(
+struct resultSetS *executeQuerySelectOMP(
     struct engineS *engine,  // Constant engine object
     const char *selectItems[],  // Attributes to select (SELECT clause)
     int numItems,  // Number of attributes to select (NULL for all)
@@ -365,14 +365,11 @@ struct resultSetS *executeQuerySelectSerial(
         // Parallelized
         #pragma omp parallel for
         for (int i = 0; i < engine->num_indexes; i++) {
-            if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
-                anyIndexExists = true;
-                indexExists[i] = true;
-
+            if (wc->attribute != NULL && strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
                 // Use B+ tree index for this attribute
                 node *cur_root = engine->bplus_tree_roots[i]; // B+ tree root for this indexed attribute
                 FieldType type = engine->attribute_types[i];
-
+                
                 KEY_T key_start, key_end;
                 bool typeSupported = true;
 
@@ -380,7 +377,7 @@ struct resultSetS *executeQuerySelectSerial(
                     unsigned long long val = strtoull(wc->value, NULL, 10);
                     key_start.type = KEY_UINT64;
                     key_end.type = KEY_UINT64;
-
+                    
                     if (strcmp(wc->operator, "=") == 0) {
                         key_start.v.u64 = val;
                         key_end.v.u64 = val;
@@ -404,7 +401,7 @@ struct resultSetS *executeQuerySelectSerial(
                     int val = atoi(wc->value);
                     key_start.type = KEY_INT;
                     key_end.type = KEY_INT;
-
+                    
                     if (strcmp(wc->operator, "=") == 0) {
                         key_start.v.i32 = val;
                         key_end.v.i32 = val;
@@ -424,6 +421,42 @@ struct resultSetS *executeQuerySelectSerial(
                         key_start.v.i32 = INT_MIN;
                         key_end.v.i32 = INT_MAX;
                     }
+                } else if (type == FIELD_BOOL) {
+                    bool val = (strcasecmp(wc->value, "true") == 0 || strcmp(wc->value, "1") == 0);
+                    key_start.type = KEY_BOOL;
+                    key_end.type = KEY_BOOL;
+                    
+                    if (strcmp(wc->operator, "=") == 0) {
+                        key_start.v.b = val;
+                        key_end.v.b = val;
+                    } else if (strcmp(wc->operator, "!=") == 0) {
+                        key_start.v.b = !val;
+                        key_end.v.b = !val;
+                    } else {
+                        bool start_b = false;
+                        bool end_b = true;
+                        
+                        if (strcmp(wc->operator, ">") == 0) {
+                            // > val
+                            if (val == false) { start_b = true; end_b = true; } // > false -> true
+                            else { start_b = true; end_b = false; } // > true -> impossible
+                        } else if (strcmp(wc->operator, ">=") == 0) {
+                            // >= val
+                            if (val == false) { start_b = false; end_b = true; } // >= false -> false, true
+                            else { start_b = true; end_b = true; } // >= true -> true
+                        } else if (strcmp(wc->operator, "<") == 0) {
+                            // < val
+                            if (val == true) { start_b = false; end_b = false; } // < true -> false
+                            else { start_b = true; end_b = false; } // < false -> impossible
+                        } else if (strcmp(wc->operator, "<=") == 0) {
+                            // <= val
+                            if (val == true) { start_b = false; end_b = true; } // <= true -> false, true
+                            else { start_b = false; end_b = false; } // <= false -> false
+                        }
+                        
+                        key_start.v.b = start_b;
+                        key_end.v.b = end_b;
+                    }
                 } else {
                     // Fallback for unsupported types in index search
                     typeSupported = false;
@@ -434,7 +467,8 @@ struct resultSetS *executeQuerySelectSerial(
                     continue;
                 }
 
-                // Allocating for keys, using num_records as upper bound.
+                anyIndexExists = true;
+                indexExists[i] = true;                // Allocating for keys, using num_records as upper bound.
                 KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));
                 ROW_PTR *returned_pointers = malloc(engine->num_records * sizeof(ROW_PTR));
 
@@ -442,19 +476,10 @@ struct resultSetS *executeQuerySelectSerial(
 
                 // Add found records to matchingRecords
                 if (num_found > 0) {
-                    int numthreads = omp_get_thread_num();
-                    if (num_found > numthreads * 3) {   // Parallelized
-                        // Reallocate matchingRecords if needed (though we alloc'd max size initially)
-                        #pragma for
-                        for (int k = 0; k < num_found; k++) {
-                            #pragma omp critical
-                            matchingRecords[matchCount++] = (record *)returned_pointers[k];
-                        }
-                    } else {    // Unparallelized
-                        // Reallocate matchingRecords if needed (though we alloc'd max size initially)
-                        for (int k = 0; k < num_found; k++) {
-                            matchingRecords[matchCount++] = (record *)returned_pointers[k];
-                        }
+                    // Reallocate matchingRecords if needed (though we alloc'd max size initially)
+                    for (int k = 0; k < num_found; k++) {
+                        #pragma omp critical
+                        matchingRecords[matchCount++] = (record *)returned_pointers[k];
                     }
                 }
 
@@ -545,7 +570,7 @@ struct resultSetS *executeQuerySelectSerial(
  * Returns:
  *   success/failure
 */
-bool executeQueryInsertSerial(
+bool executeQueryInsertOMP(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to insert into
     const record *newRecord  // Record to insert as array of [Attribute, Value] pairs
@@ -560,42 +585,7 @@ bool executeQueryInsertSerial(
         return false;
     }
 
-    // Append the new record to the end of the data file (as a CSV)
-    // NOTE: File I/O is inherently serial and hard to parallelize safely without complex locking or offset management.
-    // For this assignment, we'll keep the file write serial or use a critical section if called from parallel context.
-    // However, this function itself is likely called serially by the main loop in QPEOMP.c.
-    // The parallelization target is the internal work of the function (updating indexes).
-    FILE *file = fopen(engine->datafile, "a");
-    if (file == NULL) {
-        if (VERBOSE) {
-            fprintf(stderr, "Failed to open data file for appending: %s\n", engine->datafile);
-        }
-        return false;
-    }
-    // Write the new record as a CSV line
-    fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
-            newRecord->command_id,
-            newRecord->raw_command,
-            newRecord->base_command,
-            newRecord->shell_type,
-            newRecord->exit_code,
-            newRecord->timestamp,
-            newRecord->sudo_used,
-            newRecord->working_directory,
-            newRecord->user_id,
-            newRecord->user_name,
-            newRecord->host_name,
-            newRecord->risk_level);
-    fclose(file);
-
-    // Append the new record to engine->all_records in memory
-    engine->all_records = (record **)realloc(engine->all_records, (engine->num_records + 1) * sizeof(record *));
-    if (engine->all_records == NULL) {
-        if (VERBOSE) {
-            fprintf(stderr, "Memory reallocation failed for all_records\n");
-        }
-        return false;
-    }
+    // Allocate memory for the new record copy first (needed for multiple sections)
     record *record_copy = (record *)malloc(sizeof(record));
     if (record_copy == NULL) {
         if (VERBOSE) {
@@ -603,54 +593,90 @@ bool executeQueryInsertSerial(
         }
         return false;
     }
-    *record_copy = *newRecord;  // Copy the contents of newRecord (properly allocating memory outside function scope)
-    engine->all_records[engine->num_records] = record_copy;
+    *record_copy = *newRecord;  // Copy the contents
 
-    // Increment the record count
-    engine->num_records += 1;
-
-    // Update any relevant B+ tree indexes to include the new record
-    // Parallelize this loop using OpenMP
-    // Each iteration works on a different index (different B+ tree), so they are independent.
-    // The engine->bplus_tree_roots array is shared, but each thread writes to a distinct index 'i'.
     bool success = true;
-    
-    #pragma omp parallel for shared(engine, record_copy, success) schedule(dynamic)
-    for (int i = 0; i < engine->num_indexes; i++) {
-        const char *indexed_attr = engine->indexed_attributes[i];
-        
-        // Insert the new record into the B+ tree for this indexed attribute
-        node *root = engine->bplus_tree_roots[i];
-        KEY_T key = extract_key_from_record(record_copy, indexed_attr);
-        root = insert(root, key, (ROW_PTR)record_copy);
-        engine->bplus_tree_roots[i] = root;
-        
-        if(root == NULL) {
-            if (VERBOSE) {
-                #pragma omp critical
-                fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s\n", indexed_attr);
+    bool file_success = true;
+    bool memory_success = true;
+    bool index_success = true;
+
+    #pragma omp parallel sections shared(engine, record_copy, file_success, memory_success, index_success)
+    {
+        #pragma omp section
+        {
+            // Section 1: File I/O
+            FILE *file = fopen(engine->datafile, "a");
+            if (file == NULL) {
+                if (VERBOSE) {
+                    fprintf(stderr, "Failed to open data file for appending: %s\n", engine->datafile);
+                }
+                file_success = false;
+            } else {
+                fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
+                        newRecord->command_id,
+                        newRecord->raw_command,
+                        newRecord->base_command,
+                        newRecord->shell_type,
+                        newRecord->exit_code,
+                        newRecord->timestamp,
+                        newRecord->sudo_used,
+                        newRecord->working_directory,
+                        newRecord->user_id,
+                        newRecord->user_name,
+                        newRecord->host_name,
+                        newRecord->risk_level);
+                fclose(file);
             }
-            #pragma omp atomic write
-            success = false;
         }
+
+        #pragma omp section
+        {
+            // Section 2: Memory Update
+            record **temp = (record **)realloc(engine->all_records, (engine->num_records + 1) * sizeof(record *));
+            if (temp == NULL) {
+                if (VERBOSE) {
+                    fprintf(stderr, "Memory reallocation failed for all_records\n");
+                }
+                memory_success = false;
+            } else {
+                engine->all_records = temp;
+                engine->all_records[engine->num_records] = record_copy;
+                engine->num_records += 1;
+            }
+        }
+
+        #pragma omp section
+        {
+            // Section 3: Index Update
+            #pragma omp parallel for shared(engine, record_copy, index_success) schedule(dynamic)
+            for (int i = 0; i < engine->num_indexes; i++) {
+                const char *indexed_attr = engine->indexed_attributes[i];
+                
+                node *root = engine->bplus_tree_roots[i];
+                KEY_T key = extract_key_from_record(record_copy, indexed_attr);
+                root = insert(root, key, (ROW_PTR)record_copy);
+                engine->bplus_tree_roots[i] = root;
+                
+                if(root == NULL) {
+                    if (VERBOSE) {
+                        #pragma omp critical
+                        fprintf(stderr, "Failed to insert new record into B+ tree for attribute: %s\n", indexed_attr);
+                    }
+                    #pragma omp atomic write
+                    index_success = false;
+                }
+            }
+        }
+    }
+
+    if (!file_success || !memory_success || !index_success) {
+        success = false;
     }
 
     return success;
 }
 
-
-// assumes these types / functions are declared elsewhere:
-//   struct engineS;
-//   struct resultSetS;
-//   struct whereClauseS;
-//   typedef ... KEY_T;
-//   typedef ... *ROW_PTR;
-//   typedef struct recordS record;
-//   bool evaluateWhereClause(record *rec, struct whereClauseS *whereClause);
-//   KEY_T extract_key_from_record(record *rec, const char *attr);
-//   void *delete(void *root, KEY_T key, ROW_PTR row_ptr);
-
-struct resultSetS *executeQueryDeleteSerial(
+struct resultSetS *executeQueryDeleteOMP(
     struct engineS *engine,          // Constant engine object
     const char *tableName,           // Table to delete from (unused here)
     struct whereClauseS *whereClause // WHERE clause (NULL for all rows)
@@ -673,7 +699,7 @@ struct resultSetS *executeQueryDeleteSerial(
     int num_records = engine->num_records;
     int deletedCount = 0;
 
-    // 1) Parallel phase: compute delete flags
+    // Compute delete flags in parallel
     int *deleteFlags = (int *)calloc(num_records, sizeof(int));
     if (!deleteFlags) {
         return result; // result->success stays false
@@ -700,29 +726,91 @@ struct resultSetS *executeQueryDeleteSerial(
             }
         }
 
+        // Synchronize and update global deleted count
         #pragma omp atomic
         deletedCount += localDeleted;
     }
 
-    // 2) Serial phase: mutate engine, update B+ trees, free records, compact array
+    // Mutate engine, update B+ trees, free records, compact array
     int writeIndex = 0;
 
+    // We can parallelize the B+ tree updates and file rewriting using sections
+    // However, memory compaction and freeing must be done carefully to avoid race conditions
+    // So we will do B+ tree updates and File Rewriting in parallel sections, then compact memory serially
+
+    bool tree_success = true;
+    bool file_success = true;
+
+    #pragma omp parallel sections shared(engine, deleteFlags, tree_success, file_success)
+    {
+        #pragma omp section
+        {
+            // Section 1: Update B+ Trees (Remove deleted records)
+            // We iterate through all records, check if they are marked for deletion
+            // Note: We are reading engine->all_records, which is safe as long as we don't modify it yet
+            #pragma omp parallel for shared(engine, deleteFlags) schedule(dynamic)
+            for (int i = 0; i < num_records; i++) {
+                if (deleteFlags[i]) {
+                    record *currentRecord = engine->all_records[i];
+                    for (int j = 0; j < engine->num_indexes; j++) {
+                        const char *indexed_attr = engine->indexed_attributes[j];
+                        KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
+                        // B+ tree delete is not thread-safe for the same tree, so we need critical sections per tree?
+                        // Or we can assume different trees are independent, but multiple threads might hit the same tree.
+                        // The original code had a loop over records, then loop over indexes.
+                        // To parallelize safely, we should probably lock per tree or just run this section serially if B+ tree isn't thread safe.
+                        // Given the assignment context, we'll assume we need to protect the tree access.
+                        
+                        #pragma omp critical
+                        {
+                            engine->bplus_tree_roots[j] = delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
+                        }
+                    }
+                }
+            }
+        }
+
+        #pragma omp section
+        {
+            // Section 2: Rewrite File (Write only non-deleted records)
+            FILE *file = fopen(engine->datafile, "w");
+            if (file != NULL) {
+                for (int i = 0; i < num_records; i++) {
+                    if (!deleteFlags[i]) {
+                        record *r = engine->all_records[i];
+                        fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
+                            r->command_id,
+                            r->raw_command,
+                            r->base_command,
+                            r->shell_type,
+                            r->exit_code,
+                            r->timestamp,
+                            r->sudo_used,
+                            r->working_directory,
+                            r->user_id,
+                            r->user_name,
+                            r->host_name,
+                            r->risk_level);
+                    }
+                }
+                fclose(file);
+            } else {
+                if (VERBOSE) {
+                    fprintf(stderr, "Failed to open data file for rewriting: %s\n", engine->datafile);
+                }
+                file_success = false;
+            }
+        }
+    }
+
+    // Serial Phase: Compact memory and free deleted records
+    // This must happen after B+ tree updates and File writing are done reading the records
     for (int i = 0; i < num_records; i++) {
         record *currentRecord = engine->all_records[i];
 
         if (deleteFlags[i]) {
-            // Remove from B+ Tree indexes
-            for (int j = 0; j < engine->num_indexes; j++) {
-                const char *indexed_attr = engine->indexed_attributes[j];
-                KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
-                engine->bplus_tree_roots[j] =
-                    delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
-            }
-
-            // Free the record memory
             free(currentRecord);
         } else {
-            // Keep the record, move it to the current write position if needed
             if (writeIndex != i) {
                 engine->all_records[writeIndex] = currentRecord;
             }
@@ -730,44 +818,13 @@ struct resultSetS *executeQueryDeleteSerial(
         }
     }
 
-    free(deleteFlags);
-
-    // Update the record count in the engine
     engine->num_records = writeIndex;
-
-    // Rewrite the CSV file with the remaining records (serial)
-    FILE *file = fopen(engine->datafile, "w");
-    if (file != NULL) {
-        for (int i = 0; i < engine->num_records; i++) {
-            record *r = engine->all_records[i];
-            fprintf(file, "%llu,%s,%s,%s,%d,%s,%d,%s,%d,%s,%s,%d\n",
-                r->command_id,
-                r->raw_command,
-                r->base_command,
-                r->shell_type,
-                r->exit_code,
-                r->timestamp,
-                r->sudo_used,
-                r->working_directory,
-                r->user_id,
-                r->user_name,
-                r->host_name,
-                r->risk_level);
-        }
-        fclose(file);
-    } else {
-        if ( VERBOSE ) {
-            fprintf(stderr,
-                    "Failed to open data file for rewriting: %s\n",
-                    engine->datafile);
-        }
-    }
 
     double time_taken = omp_get_wtime() - start;
 
     result->numRecords = deletedCount;
-    result->queryTime  = time_taken;
-    result->success    = true;
+    result->queryTime = time_taken;
+    result->success = true;
 
     return result;
 }
@@ -782,7 +839,7 @@ struct resultSetS *executeQueryDeleteSerial(
  * Returns:
  *   pointer to initialized engine struct 
 */
-struct engineS *initializeEngineSerial(
+struct engineS *initializeEngineOMP(
     int num_indexes,  // Total number of indexes to start 
     const char *indexed_attributes[],  // Names of indexed attributes
     const int attribute_types[],   // Types of indexed attributes (0 = uint, 1 = int, 2 = string, 3 = boolean)
@@ -813,15 +870,13 @@ struct engineS *initializeEngineSerial(
     // Read all records from the database into memory and store in engine->all_records
     if(!datafile){ datafile = "../data/commands_50k.csv"; }; // Filepath default
     engine->datafile = strdup(datafile);
-    engine->all_records = getAllRecordsFromFile(datafile, &engine->num_records);  // Directly update record count
+    engine->all_records = getAllRecordsFromFileOMP(datafile, &engine->num_records);  // Directly update record count
 
-    // Build B+ tree indexes in parallel - each index is independent
-    #pragma omp parallel for schedule(dynamic)
+    // Copy indexed attribute names and types into engine struct (defaults)
     for (int i = 0; i < num_indexes; i++) {
         // Build B+ tree index for each indexed attribute
-        bool success = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
+        bool success = makeIndexOMP(engine, indexed_attributes[i], attribute_types[i]);
         if (!success) {
-            #pragma omp critical
             fprintf(stderr, "Failed to create index for attribute: %s\n", indexed_attributes[i]);
         }
     }
@@ -830,7 +885,7 @@ struct engineS *initializeEngineSerial(
 }
 
 /* Safety destroys the engine, freeing all memory */
-void destroyEngineSerial(struct engineS *engine) {
+void destroyEngineOMP(struct engineS *engine) {
     if (engine != NULL) {
         /* Free: B+ tree roots (and their nodes) */
         if (engine->bplus_tree_roots != NULL) {
@@ -881,14 +936,14 @@ void destroyEngineSerial(struct engineS *engine) {
  * Returns:
  *  exit code (true = success, false = failure)
 */
-bool addAttributeIndexSerial(
+bool addAttributeIndexOMP(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table name
     const char *attributeName,  // Name of the attribute to index
     int attributeType  // Attribute type to index (0 = Uinteger, 1= = int, 2 = string, 3 = boolean)
 ) {
     // Create a new B+ tree index for the specified attribute
-    bool makeIndexSuccess = makeIndexSerial(engine, attributeName, attributeType);
+    bool makeIndexSuccess = makeIndexOMP(engine, attributeName, attributeType);
     if (makeIndexSuccess) {
         if (VERBOSE) {
             fprintf(stderr, "Failed to create B+ tree index for attribute: %s\n", attributeName);
@@ -911,53 +966,27 @@ int isAttributeIndexed(struct engineS *engine, const char *attributeName) {
 
 /* Performs a linear search through a given array of records based on the WHERE clause */
 record **linearSearchRecords(record **records, int num_records, struct whereClauseS *whereClause, int *matchingRecords) {
+    // Allocate space for results array
+    record **results = malloc(sizeof(record *));
     *matchingRecords = 0;
-    
-    // Phase 1: Parallel identification of matching records using flags
-    int *matchFlags = (int *)calloc(num_records, sizeof(int));
-    if (!matchFlags) {
-        return NULL; // Memory allocation failure
-    }
 
-    #pragma omp parallel
-    {
-        int localMatches = 0;
-
-        #pragma omp for nowait
-        for(int i = 0; i < num_records; i++) {
-            record *currentRecord = records[i];
-            bool matches = true;
-
-            if (whereClause != NULL) {
-                matches = evaluateWhereClause(currentRecord, whereClause);
-            }
-
-            if (matches) {
-                matchFlags[i] = 1;
-                localMatches++;
-            }
-        }
-
-        #pragma omp atomic
-        *matchingRecords += localMatches;
-    }
-
-    // Phase 2: Serial collection of matching records into results array
-    record **results = malloc((*matchingRecords) * sizeof(record *));
-    if (!results) {
-        free(matchFlags);
-        return NULL; // Memory allocation failure
-    }
-
-    int writeIndex = 0;
+    // Iterate through all records and apply WHERE clause filtering
     for(int i = 0; i < num_records; i++) {
-        if (matchFlags[i]) {
-            results[writeIndex++] = records[i];
+        record *currentRecord = records[i];
+        bool matches = true;
+
+        if (whereClause != NULL) {
+            matches = evaluateWhereClause(currentRecord, whereClause);
+        }
+
+        // If record matches all conditions, add to results
+        if (matches) {
+            results = realloc(results, (*matchingRecords + 1) * sizeof(record *));
+            results[*matchingRecords] = currentRecord;
+            (*matchingRecords)++;
         }
     }
 
-    free(matchFlags);
-    
     // Return the array of matching records
     return results;
 }

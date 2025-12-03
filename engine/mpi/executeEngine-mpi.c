@@ -329,7 +329,7 @@ bool evaluateWhereClause(record *r, struct whereClauseS *wc) {
 * Returns:
 *    A 
 */
-struct resultSetS *executeQuerySelectSerial(
+struct resultSetS *executeQuerySelectMPI(
     struct engineS *engine,  // Constant engine object
     const char *selectItems[],  // Attributes to select (SELECT clause)
     int numItems,  // Number of attributes to select (NULL for all)
@@ -363,9 +363,6 @@ struct resultSetS *executeQuerySelectSerial(
     while (wc != NULL) {
         for (int i = 0; i < engine->num_indexes; i++) {
             if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
-                anyIndexExists = true;
-                indexExists[i] = true;
-
                 // Use B+ tree index for this attribute
                 node *cur_root = engine->bplus_tree_roots[i]; // B+ tree root for this indexed attribute
                 FieldType type = engine->attribute_types[i];
@@ -421,6 +418,42 @@ struct resultSetS *executeQuerySelectSerial(
                         key_start.v.i32 = INT_MIN;
                         key_end.v.i32 = INT_MAX;
                     }
+                } else if (type == FIELD_BOOL) {
+                    bool val = (strcasecmp(wc->value, "true") == 0 || strcmp(wc->value, "1") == 0);
+                    key_start.type = KEY_BOOL;
+                    key_end.type = KEY_BOOL;
+                    
+                    if (strcmp(wc->operator, "=") == 0) {
+                        key_start.v.b = val;
+                        key_end.v.b = val;
+                    } else if (strcmp(wc->operator, "!=") == 0) {
+                        key_start.v.b = !val;
+                        key_end.v.b = !val;
+                    } else {
+                        bool start_b = false;
+                        bool end_b = true;
+                        
+                        if (strcmp(wc->operator, ">") == 0) {
+                            // > val
+                            if (val == false) { start_b = true; end_b = true; } // > false -> true
+                            else { start_b = true; end_b = false; } // > true -> impossible
+                        } else if (strcmp(wc->operator, ">=") == 0) {
+                            // >= val
+                            if (val == false) { start_b = false; end_b = true; } // >= false -> false, true
+                            else { start_b = true; end_b = true; } // >= true -> true
+                        } else if (strcmp(wc->operator, "<") == 0) {
+                            // < val
+                            if (val == true) { start_b = false; end_b = false; } // < true -> false
+                            else { start_b = true; end_b = false; } // < false -> impossible
+                        } else if (strcmp(wc->operator, "<=") == 0) {
+                            // <= val
+                            if (val == true) { start_b = false; end_b = true; } // <= true -> false, true
+                            else { start_b = false; end_b = false; } // <= false -> false
+                        }
+                        
+                        key_start.v.b = start_b;
+                        key_end.v.b = end_b;
+                    }
                 } else {
                     // Fallback for unsupported types in index search
                     typeSupported = false;
@@ -430,6 +463,9 @@ struct resultSetS *executeQuerySelectSerial(
                 if (!typeSupported) {
                     continue;
                 }
+
+                anyIndexExists = true;
+                indexExists[i] = true;
 
                 // Allocating for keys, using num_records as upper bound.
                 KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));
@@ -532,7 +568,7 @@ struct resultSetS *executeQuerySelectSerial(
  * Returns:
  *   success/failure
 */
-bool executeQueryInsertSerial(
+bool executeQueryInsertMPI(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table to insert into
     const record *newRecord  // Record to insert as array of [Attribute, Value] pairs
@@ -624,10 +660,7 @@ bool executeQueryInsertSerial(
             }
         }
     }
-
-    // Optional: Synchronize success status across all ranks?
-    // For now, we return local success. The query engine might need to aggregate this.
-    
+   
     return success;
 }
 
@@ -636,9 +669,9 @@ bool executeQueryInsertSerial(
 struct resultSetS *executeQueryDeleteMPI(
     struct engineS *engine,
     const char *tableName,
-    struct whereClauseS *whereClause,
-    MPI_Comm comm
+    struct whereClauseS *whereClause
 ) {
+    MPI_Comm comm = MPI_COMM_WORLD;
     int rank, size;
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
@@ -812,14 +845,7 @@ struct resultSetS *executeQueryDeleteMPI(
     return result;
 }
 
-/* Wrapper for Serial API compatibility */
-struct resultSetS *executeQueryDeleteSerial(
-    struct engineS *engine,
-    const char *tableName,
-    struct whereClauseS *whereClause
-) {
-    return executeQueryDeleteMPI(engine, tableName, whereClause, MPI_COMM_WORLD);
-}
+
 
 /* Initialize the engine, allocating space for default values, loading indexes, and loading the data
  * Parameters:
@@ -831,7 +857,7 @@ struct resultSetS *executeQueryDeleteSerial(
  * Returns:
  *   pointer to initialized engine struct 
 */
-struct engineS *initializeEngineSerial(
+struct engineS *initializeEngineMPI(
     int num_indexes,  // Total number of indexes to start 
     const char *indexed_attributes[],  // Names of indexed attributes
     const int attribute_types[],   // Types of indexed attributes (0 = uint, 1 = int, 2 = string, 3 = boolean)
@@ -862,12 +888,12 @@ struct engineS *initializeEngineSerial(
     // Read all records from the database into memory and store in engine->all_records
     if(!datafile){ datafile = "../data/commands_50k.csv"; }; // Filepath default
     engine->datafile = strdup(datafile);
-    engine->all_records = getAllRecordsFromFile(datafile, &engine->num_records);  // Directly update record count
+    engine->all_records = getAllRecordsFromFileMPI(datafile, &engine->num_records);  // Directly update record count
 
     // Copy indexed attribute names and types into engine struct (defaults)
     for (int i = 0; i < num_indexes; i++) {
         // Build B+ tree index for each indexed attribute
-        bool success = makeIndexSerial(engine, indexed_attributes[i], attribute_types[i]);
+        bool success = makeIndexMPI(engine, indexed_attributes[i], attribute_types[i]);
         if (!success) {
             fprintf(stderr, "Failed to create index for attribute: %s\n", indexed_attributes[i]);
         }
@@ -877,7 +903,7 @@ struct engineS *initializeEngineSerial(
 }
 
 /* Safety destroys the engine, freeing all memory */
-void destroyEngineSerial(struct engineS *engine) {
+void destroyEngineMPI(struct engineS *engine) {
     if (engine != NULL) {
         /* Free: B+ tree roots (and their nodes) */
         if (engine->bplus_tree_roots != NULL) {
@@ -928,14 +954,14 @@ void destroyEngineSerial(struct engineS *engine) {
  * Returns:
  *  exit code (true = success, false = failure)
 */
-bool addAttributeIndexSerial(
+bool addAttributeIndexMPI(
     struct engineS *engine,  // Constant engine object
     const char *tableName,  // Table name
     const char *attributeName,  // Name of the attribute to index
     int attributeType  // Attribute type to index (0 = Uinteger, 1= = int, 2 = string, 3 = boolean)
 ) {
     // Create a new B+ tree index for the specified attribute
-    bool makeIndexSuccess = makeIndexSerial(engine, attributeName, attributeType);
+    bool makeIndexSuccess = makeIndexMPI(engine, attributeName, attributeType);
     if (makeIndexSuccess) {
         if (VERBOSE) {
             fprintf(stderr, "Failed to create B+ tree index for attribute: %s\n", attributeName);

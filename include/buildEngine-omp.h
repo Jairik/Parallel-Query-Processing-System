@@ -1,10 +1,10 @@
 /* Header file for Serial B+ Tree Construction */
 
-#ifndef BUILDTREE_SERIAL_H
-#define BUILDTREE_SERIAL_H
+#ifndef BUILDTREE_OMP_H
+#define BUILDTREE_OMP_H
 
 #include "bplus.h"
-#include "executeEngine-serial.h"
+#include "executeEngine-omp.h"
 #include "logType.h"  // record struct
 #include "recordSchema.h"  // record schema helpers
 #include <stdbool.h>
@@ -27,7 +27,12 @@
  * Returns:
  *   Boolean of success (true) or failure (false) of index creation
  */
-bool makeIndexSerial(struct engineS *engine, const char *indexName, int attributeType);
+bool makeIndexOMP(struct engineS *engine, const char *indexName, int attributeType);
+
+record **getAllRecordsFromFileOMP(const char *filepath, int *num_records);
+node *loadIntoBplusTreeOMP(record **records, int num_records, const char *attributeName);
+record *getRecordFromLineOMP(char *line);
+FieldType mapAttributeTypeOMP(int attributeType);
 
 /*
  * loadIntoBplusTree: Loads an array of records into a B+ tree
@@ -95,4 +100,4 @@ record *getRecordFromLine(char *line);
  */
 FieldType mapAttributeType(int attributeType);
 
-#endif // BUILDTREE_SERIAL_H
+#endif // BUILDTREE_OMP_H

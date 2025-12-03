@@ -6,10 +6,39 @@
 #include <string.h>
 #include <strings.h>
 #include <time.h>
+#include <ctype.h>
 #include <omp.h>
-#include "../include/executeEngine-serial.h"
-#include "../include/connectEngine.h"
-#include "../include/printHelper.h"
+#include "../include/executeEngine-omp.h"
+
+// Fix for include conflict: printHelper.h includes executeEngine-serial.h which conflicts with executeEngine-omp.h
+// We will manually declare printTable and NOT include printHelper.h
+// #include "../include/printHelper.h"
+void printTable(FILE *output, struct resultSetS *result, int limit);
+
+#include "../include/sql.h"
+
+// Constants
+#define DATA_FILE "data-generation/commands_50k.csv"
+#define TABLE_NAME "commands"
+#define MAX_TOKENS 100
+#define ROW_LIMIT 20
+
+// Optimal indexes constant
+const char* optimalIndexes[] = {
+    "command_id",
+    "user_id",
+    "risk_level",
+    "exit_code",
+    "sudo_used"
+};
+const FieldType optimalIndexTypes[] = {
+    FIELD_UINT64,
+    FIELD_INT,
+    FIELD_INT,
+    FIELD_INT,
+    FIELD_BOOL
+};
+const int numOptimalIndexes = 5;
 
 // ANSI color codes for pretty printing
 #define CYAN    "\x1b[36m"
@@ -17,12 +46,103 @@
 #define BOLD    "\x1b[1m"
 #define RESET   "\x1b[0m"
 
+// Helper to trim whitespace from a string
+static inline char* trim(char *s) {
+    while (*s && isspace((unsigned char)*s)) s++;
+    // Also trim trailing
+    char *end = s + strlen(s) - 1;
+    while (end > s && isspace((unsigned char)*end)) end--;
+    *(end + 1) = 0;
+    return s;
+}
+
 // Helper to safely copy strings with truncation (local version)
 static inline void safe_copy(char *dst, size_t n, const char *src) {
     snprintf(dst, n, "%.*s", (int)n - 1, src);
 }
 
+// Helper to map Parser OperatorType to string
+const char* get_operator_string(OperatorType op) {
+    switch (op) {
+        case OP_EQ: return "=";
+        case OP_NEQ: return "!=";
+        case OP_GT: return ">";
+        case OP_LT: return "<";
+        case OP_GTE: return ">=";
+        case OP_LTE: return "<=";
+        default: return "=";
+    }
+}
+
+// Helper to map Parser LogicOperator to string
+const char* get_logic_op_string(LogicOperator op) {
+    switch (op) {
+        case LOGIC_AND: return "AND";
+        case LOGIC_OR: return "OR";
+        default: return "AND";
+    }
+}
+
+// Helper to convert ParsedSQL conditions to engine's whereClauseS linked list
+struct whereClauseS* convert_conditions(ParsedSQL *parsed) {
+    if (parsed->num_conditions == 0) return NULL;
+
+    struct whereClauseS *head = NULL;
+    struct whereClauseS *current = NULL;
+
+    for (int i = 0; i < parsed->num_conditions; i++) {
+        struct whereClauseS *node = malloc(sizeof(struct whereClauseS));
+        
+        if (parsed->conditions[i].is_nested && parsed->conditions[i].nested_sql) {
+            node->attribute = NULL;
+            node->operator = NULL;
+            node->value = NULL;
+            node->value_type = 0;
+            node->sub = convert_conditions(parsed->conditions[i].nested_sql);
+        } else {
+            node->attribute = parsed->conditions[i].column;
+            node->operator = get_operator_string(parsed->conditions[i].op);
+            node->value = parsed->conditions[i].value;
+            
+            // Simple type inference for the test
+            if (parsed->conditions[i].is_numeric) {
+                node->value_type = 0; // Integer/Number
+            } else {
+                node->value_type = 1; // String
+            }
+            node->sub = NULL;
+        }
+
+        node->next = NULL;
+
+        if (i < parsed->num_conditions - 1) {
+            node->logical_op = get_logic_op_string(parsed->logic_ops[i]);
+        } else {
+            node->logical_op = NULL;
+        }
+
+        if (head == NULL) {
+            head = node;
+            current = node;
+        } else {
+            current->next = node;
+            current = node;
+        }
+    }
+    return head;
+}
+
+// Helper to free the manually constructed where clause
+void free_where_clause_list(struct whereClauseS *head) {
+    while (head) {
+        struct whereClauseS *temp = head;
+        head = head->next;
+        free(temp);
+    }
+}
+
 int main(int argc, char *argv[]) {
+    printf("Starting main...\n"); fflush(stdout);
         
     // Pull out number of defined threads from CLI args (default to 8)
     int num_threads = 8;
@@ -34,14 +154,19 @@ int main(int argc, char *argv[]) {
     // Start a timer for total runtime statistics
     double totalStart = omp_get_wtime();
 
+    printf("Initializing Engine...\n"); fflush(stdout);
     // Instantiate an engine object to handle the execution of the query
-    struct engineS *engine = initializeEngineSerial(
+    struct engineS *engine = initializeEngineOMP(
         numOptimalIndexes,  // Number of indexes
         optimalIndexes,  // Indexes to build B+ trees for
         (const int *)optimalIndexTypes,  // Index types
         DATA_FILE,
         TABLE_NAME
     );
+    printf("Engine Initialized.\n"); fflush(stdout);
+
+    // Wait for all threads to sync before proceeding
+    #pragma omp barrier
 
     // End timer for engine initialization
     double initTimeTaken = ((double)omp_get_wtime() - totalStart) / CLOCKS_PER_SEC;
@@ -51,7 +176,7 @@ int main(int argc, char *argv[]) {
     FILE *fp = fopen(query_file, "r");
     if (!fp) {
         perror("Failed to open query file");
-        destroyEngineSerial(engine);
+        destroyEngineOMP(engine);
         return EXIT_FAILURE;
     }
 
@@ -63,7 +188,7 @@ int main(int argc, char *argv[]) {
     if (!buffer) {
         perror("Failed to allocate memory for query file");
         fclose(fp);
-        destroyEngineSerial(engine);
+        destroyEngineOMP(engine);
         return EXIT_FAILURE;
     }
     size_t read_size = fread(buffer, 1, fsize, fp);
@@ -71,7 +196,7 @@ int main(int argc, char *argv[]) {
         perror("Failed to read query file");
         free(buffer);
         fclose(fp);
-        destroyEngineSerial(engine);
+        destroyEngineOMP(engine);
         return EXIT_FAILURE;
     }
     buffer[fsize] = 0;
@@ -139,18 +264,18 @@ int main(int argc, char *argv[]) {
                     safe_copy(r.host_name, sizeof(r.host_name), parsed.insert_values[10]);
                     r.risk_level = atoi(parsed.insert_values[11]);
 
-                    success = executeQueryInsertSerial(engine, parsed.table, &r);
+                    success = executeQueryInsertOMP(engine, parsed.table, &r);
                 }
             } 
             else if (parsed.command == CMD_DELETE) {
                 struct whereClauseS *whereClause = convert_conditions(&parsed);
-                result = executeQueryDeleteSerial(engine, parsed.table, whereClause);
+                result = executeQueryDeleteOMP(engine, parsed.table, whereClause);
                 if (result) rowsAffected = result->numRecords;
                 free_where_clause_list(whereClause);
             } 
             else if (parsed.command == CMD_SELECT) {
                 struct whereClauseS *whereClause = convert_conditions(&parsed);
-                result = executeQuerySelectSerial(engine, selectItems, numSelectItems, parsed.table, whereClause);
+                result = executeQuerySelectOMP(engine, selectItems, numSelectItems, parsed.table, whereClause);
                 free_where_clause_list(whereClause);
             }
             
@@ -197,7 +322,7 @@ int main(int argc, char *argv[]) {
     }
 
     free(buffer);
-    destroyEngineSerial(engine);
+    destroyEngineOMP(engine);
 
     // Print total runtime statistics in pretty colors
     double totalTimeTaken = ((double)omp_get_wtime() - totalStart) / CLOCKS_PER_SEC;

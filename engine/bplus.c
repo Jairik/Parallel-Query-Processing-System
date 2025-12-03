@@ -491,8 +491,6 @@ static node *insertIntoLeaf(node *leaf, KEY_T key, ROW_PTR row_ptr) {
 
 /* insertIntoLeafAfterSplitting: Splits full leaf and promotes first key of new leaf. */
 static node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key, ROW_PTR row_ptr) {
-    int rank = get_rank();
-    fflush(stdout);
     
     if (leaf->keys == NULL) {
         fflush(stdout);
@@ -669,8 +667,7 @@ static node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_i
 
 /* insertIntoParent: Chooses between simple insert, split, or new root creation. */
 static node *insertIntoParent(node *root, node *left, KEY_T key, node *right) {
-    int rank = get_rank();
-    fflush(stdout);
+    
     int left_index;
     node *parent;
 
@@ -697,8 +694,7 @@ static node *insertIntoParent(node *root, node *left, KEY_T key, node *right) {
 
 /* insertIntoNewRoot: Builds new root after old root splits. */
 static node *insertIntoNewRoot(node *left, KEY_T key, node *right) {
-    int rank = get_rank();
-    fflush(stdout);
+    
     node *root = makeNode();
     root->keys[0] = key;
     root->pointers[0] = left;

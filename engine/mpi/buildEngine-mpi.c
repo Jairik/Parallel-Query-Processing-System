@@ -8,16 +8,16 @@
 #define VERBOSE 0  // Essentially testing mode
 
 // Forward declaration
-FieldType mapAttributeType(int attributeType);
+FieldType mapAttributeTypeMPI(int attributeType);
 
 // Creates a serial B+ tree from data file, returns the tree root
-bool makeIndexSerial(struct engineS *engine, const char *indexName, int attributeType) {
+bool makeIndexMPI(struct engineS *engine, const char *indexName, int attributeType) {
     // Load all records from the engine's data source
     record **records = engine->all_records;
     int numRecords = engine->num_records;
     
     // Build the B+ tree from the records array
-    node *root = loadIntoBplusTree(records, numRecords, indexName);
+    node *root = loadIntoBplusTreeMPI(records, numRecords, indexName);
     if (VERBOSE && root == NULL) {
         fprintf(stderr, "Failed to load data into B+ tree\n");
     }
@@ -26,7 +26,7 @@ bool makeIndexSerial(struct engineS *engine, const char *indexName, int attribut
     engine->bplus_tree_roots[engine->num_indexes] = root;
     engine->indexed_attributes[engine->num_indexes] = strdup(indexName);
     engine->num_indexes += 1;
-    engine->attribute_types[engine->num_indexes-1] = mapAttributeType(attributeType);
+    engine->attribute_types[engine->num_indexes-1] = mapAttributeTypeMPI(attributeType);
 
     return (engine->bplus_tree_roots[engine->num_indexes-1]) != NULL;  // Return success status
 }
@@ -39,7 +39,7 @@ bool makeIndexSerial(struct engineS *engine, const char *indexName, int attribut
  * Returns:
  *  root of the B+ tree
 */
-node *loadIntoBplusTree(record **records, int num_records, const char *attributeName) {
+node *loadIntoBplusTreeMPI(record **records, int num_records, const char *attributeName) {
     // Instantiate the B+ tree root
     node *root = NULL;
     
@@ -68,7 +68,7 @@ node *loadIntoBplusTree(record **records, int num_records, const char *attribute
  * Returns:
  *   Array of all record structs in the file
 */
-record **getAllRecordsFromFile(const char *filepath, int *num_records) {
+record **getAllRecordsFromFileMPI(const char *filepath, int *num_records) {
     // Attempt to open the file from the provided path
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
@@ -88,7 +88,7 @@ record **getAllRecordsFromFile(const char *filepath, int *num_records) {
             first_line = false;
             continue; // Skip header
         }
-        record *new_record = getRecordFromLine(line);
+        record *new_record = getRecordFromLineMPI(line);
         records = realloc(records, (count + 1) * sizeof(record *));
         if (records == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
@@ -157,7 +157,7 @@ char *parseCSVField(char **cursor) {
  * Returns:
  *   record struct populated with data from the line
 */
-record *getRecordFromLine(char *line){
+record *getRecordFromLineMPI(char *line){
     record *new_record = (record *)calloc(1, sizeof(record));
     if (new_record == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
@@ -222,7 +222,7 @@ record *getRecordFromLine(char *line){
 }
 
 /* Helper to map an int representation (0, 1, 2, 3) to a FieldType object for storing */
-FieldType mapAttributeType(int attributeType) {
+FieldType mapAttributeTypeMPI(int attributeType) {
     switch (attributeType) {
         case 0:
             return FIELD_UINT64;
