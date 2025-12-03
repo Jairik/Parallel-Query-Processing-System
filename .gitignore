@@ -10,3 +10,6 @@ build/tests/executeEngine-serial-test
 build/tests/serial-SELECT-test
 tokenizer/src/tokenizer.o
 QPEOMP
+/.vscode
+/.vscode
+/.vscode

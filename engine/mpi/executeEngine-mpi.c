@@ -357,54 +357,30 @@ struct resultSetS *executeQuerySelectSerial(
 
     // Start the timer
     clock_t start = clock();  // Start a timer
-    // Replaced whil-loop with parallelized MPI version of code
+
     // Get all indexed attributes in the WHERE clause, using the B+ tree indexes where possible
-    /* --- Parallel WHERE clause index processing --- */
-    
-    int rank, size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    
-    // Convert linked list into array for easier slicing
-    int wc_count = 0;
-    struct whereClauseS *tmp = whereClause;
-    while (tmp) {
-        wc_count++;
-        tmp = tmp->next;
-    }
-    
-    struct whereClauseS **wc_array = malloc(wc_count * sizeof(struct whereClauseS *));
-    tmp = whereClause;
-    for (int i = 0; i < wc_count; i++) {
-        wc_array[i] = tmp;
-        tmp = tmp->next;
-    }
-    
-    // Determine each process’s work range
-    int chunk = (wc_count + size - 1) / size;
-    int st = rank * chunk;
-    int ed = (start + chunk < wc_count) ? start + chunk : wc_count;
-    
-    // Local result buffer
-    record **local_matches = malloc(engine->num_records * sizeof(record *));
-    int local_match_count = 0;
-    
-    // Each rank processes its assigned WHERE clauses
-    for (int idx = start; idx < ed; idx++) {
-        struct whereClauseS *wc = wc_array[idx];
+    struct whereClauseS *wc = whereClause;
+    while (wc != NULL) {
         for (int i = 0; i < engine->num_indexes; i++) {
             if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
-                node *cur_root = engine->bplus_tree_roots[i];
+                anyIndexExists = true;
+                indexExists[i] = true;
+
+                // Use B+ tree index for this attribute
+                node *cur_root = engine->bplus_tree_roots[i]; // B+ tree root for this indexed attribute
                 FieldType type = engine->attribute_types[i];
-    
+                
                 KEY_T key_start, key_end;
                 bool typeSupported = true;
-    
+
                 if (type == FIELD_UINT64) {
                     unsigned long long val = strtoull(wc->value, NULL, 10);
-                    key_start.type = key_end.type = KEY_UINT64;
+                    key_start.type = KEY_UINT64;
+                    key_end.type = KEY_UINT64;
+                    
                     if (strcmp(wc->operator, "=") == 0) {
-                        key_start.v.u64 = key_end.v.u64 = val;
+                        key_start.v.u64 = val;
+                        key_end.v.u64 = val;
                     } else if (strcmp(wc->operator, ">") == 0) {
                         key_start.v.u64 = val + 1;
                         key_end.v.u64 = UINT64_MAX;
@@ -423,9 +399,12 @@ struct resultSetS *executeQuerySelectSerial(
                     }
                 } else if (type == FIELD_INT) {
                     int val = atoi(wc->value);
-                    key_start.type = key_end.type = KEY_INT;
+                    key_start.type = KEY_INT;
+                    key_end.type = KEY_INT;
+                    
                     if (strcmp(wc->operator, "=") == 0) {
-                        key_start.v.i32 = key_end.v.i32 = val;
+                        key_start.v.i32 = val;
+                        key_end.v.i32 = val;
                     } else if (strcmp(wc->operator, ">") == 0) {
                         key_start.v.i32 = val + 1;
                         key_end.v.i32 = INT_MAX;
@@ -443,61 +422,38 @@ struct resultSetS *executeQuerySelectSerial(
                         key_end.v.i32 = INT_MAX;
                     }
                 } else {
+                    // Fallback for unsupported types in index search
                     typeSupported = false;
+                    indexExists[i] = false;
                 }
-    
-                if (!typeSupported) continue;
-    
+
+                if (!typeSupported) {
+                    continue;
+                }
+
+                // Allocating for keys, using num_records as upper bound.
                 KEY_T *returned_keys = malloc(engine->num_records * sizeof(KEY_T));
                 ROW_PTR *returned_pointers = malloc(engine->num_records * sizeof(ROW_PTR));
+                
                 int num_found = findRange(cur_root, key_start, key_end, false, returned_keys, returned_pointers);
-    
-                for (int k = 0; k < num_found; k++) {
-                    local_matches[local_match_count++] = (record *)returned_pointers[k];
+                
+                // Add found records to matchingRecords
+                if (num_found > 0) {
+                    // Reallocate matchingRecords if needed (though we alloc'd max size initially)
+                    for (int k = 0; k < num_found; k++) {
+                        matchingRecords[matchCount++] = (record *)returned_pointers[k];
+                    }
                 }
-    
+                
                 free(returned_keys);
                 free(returned_pointers);
             }
+            else {
+                indexExists[i] = false;
+            }
         }
+        wc = wc->next;
     }
-    
-    // Gather results from all ranks
-    int *recvcounts = NULL, *displs = NULL;
-    int local_count = local_match_count;
-    if (rank == 0) {
-        recvcounts = malloc(size * sizeof(int));
-    }
-    MPI_Gather(&local_count, 1, MPI_INT, recvcounts, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    
-    record **global_matches = NULL;
-    int total = 0;
-    if (rank == 0) {
-        displs = malloc(size * sizeof(int));
-        displs[0] = 0;
-        for (int i = 0; i < size; i++) {
-            total += recvcounts[i];
-            if (i > 0) displs[i] = displs[i - 1] + recvcounts[i - 1];
-        }
-        global_matches = malloc(total * sizeof(record *));
-    }
-    
-    MPI_Gatherv(local_matches, local_count, MPI_AINT, global_matches, recvcounts, displs, MPI_AINT, 0, MPI_COMM_WORLD);
-    
-    if (rank == 0) {
-        // merge deduplicate
-        matchingRecords = global_matches;
-        matchCount = 0;
-        for (int i = 0; i < total; i++) {
-            matchingRecords[matchCount++] = global_matches[i];
-        }
-    }
-    
-    free(local_matches);
-    if (rank == 0) { free(recvcounts); free(displs); }
-    free(wc_array);
-    
-    /* --- END PARALLEL SECTION --- */
 
 
     // Perform linear search if on all non-indexed attributes or no indexes matched
@@ -854,6 +810,15 @@ struct resultSetS *executeQueryDeleteMPI(
     }
 
     return result;
+}
+
+/* Wrapper for Serial API compatibility */
+struct resultSetS *executeQueryDeleteSerial(
+    struct engineS *engine,
+    const char *tableName,
+    struct whereClauseS *whereClause
+) {
+    return executeQueryDeleteMPI(engine, tableName, whereClause, MPI_COMM_WORLD);
 }
 
 /* Initialize the engine, allocating space for default values, loading indexes, and loading the data

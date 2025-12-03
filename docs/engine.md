@@ -178,18 +178,3 @@ freeResultSet(res);
 // and rewrites the CSV file.
 struct resultSetS *res = executeQueryDeleteSerial(engine, "commands", &whereClause);
 ```
-
-Developer suggestions
-- Add a bulk-load routine for B+ trees when building indexes from large CSVs.
-- Consider switching CSV persistence strategy to append-only with periodic compaction to avoid expensive full rewrites on DELETE.
-- Add thread-safety primitives if you plan to expose concurrent write access or to allow multiple processes to concurrently update the same datafile.
-
----
-
-If you'd like, I can now:
-1. Add short diagrams that visualize the B+ tree node layout and leaf chaining.
-2. Produce a small runnable example program that demonstrates index build + select + delete with a tiny CSV and prints the B+ tree state before and after.
-3. Expand any of the sections above (e.g., a step-by-step walkthrough of `deleteEntry` internals) — tell me which area you want deeper.
-
-End of engine documentation.
-

@@ -26,17 +26,17 @@ TEST_SRCS    := $(wildcard tests/*.c)
 TEST_BIN_DIR := build/tests
 TEST_BINS    := $(patsubst tests/%.c,$(TEST_BIN_DIR)/%,$(TEST_SRCS))
 
-# Serial engine sources required for linking (only the modern B+ tree for now)
-ENGINE_COMMON_SRCS := engine/bplus.c engine/recordSchema.c engine/printHelper.c engine/serial/buildEngine-serial.c
-ENGINE_SERIAL_SRCS := $(ENGINE_COMMON_SRCS) engine/serial/executeEngine-serial.c
+# engine sources required for linking (only the modern B+ tree for now)
+ENGINE_COMMON_SRCS := engine/bplus.c engine/recordSchema.c engine/printHelper.c
+ENGINE_SERIAL_SRCS := $(ENGINE_COMMON_SRCS) engine/serial/buildEngine-serial.c engine/serial/executeEngine-serial.c
 ENGINE_SERIAL_OBJS := $(ENGINE_SERIAL_SRCS:.c=.o)
 
 # OMP engine sources
-ENGINE_OMP_SRCS := $(ENGINE_COMMON_SRCS) engine/omp/executeEngine-omp.c
+ENGINE_OMP_SRCS := $(ENGINE_COMMON_SRCS) engine/omp/executeEngine-omp.c engine/omp/buildEngine-omp.c
 ENGINE_OMP_OBJS := $(ENGINE_OMP_SRCS:.c=.o)
 
 # MPI engine sources
-ENGINE_MPI_SRCS := $(ENGINE_COMMON_SRCS) engine/mpi/executeEngine-mpi.c
+ENGINE_MPI_SRCS := $(ENGINE_COMMON_SRCS) engine/mpi/executeEngine-mpi.c engine/mpi/buildEngine-mpi.c
 ENGINE_MPI_OBJS := $(ENGINE_MPI_SRCS:.c=.o)
 
 # Tokenizer sources
@@ -48,7 +48,6 @@ TOKENIZER_OBJS := $(TOKENIZER_SRCS:.c=.o)
 all: $(ENGINE_SERIAL_OBJS) $(ENGINE_OMP_OBJS) $(ENGINE_MPI_OBJS) $(QPE_OBJS) $(QPE_EXES) $(TEST_BINS)
 
 # Ensure engine object built before parallel links
-.NOTPARALLEL:
 
 # Object build rule for all QPE sources (compile only if no main yet)
 %.o: %.c
@@ -63,16 +62,16 @@ QPEMPI.o: QPEMPI.c
 	mpicc $(CFLAGS) -c $< -o $@
 
 # Link rule for QPESeq (has a main)
-QPESeq: QPESeq.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o
-	$(CC) $(CFLAGS) QPESeq.o $(ENGINE_SERIAL_OBJS) tokenizer/src/tokenizer.o connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
+QPESeq: QPESeq.o $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) connectEngine.o
+	$(CC) $(CFLAGS) QPESeq.o $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Link rule for QPEOMP (has a main, needs OpenMP)
-QPEOMP: QPEOMP.o $(ENGINE_OMP_OBJS) tokenizer/src/tokenizer.o connectEngine.o
-	$(CC) $(CFLAGS) -fopenmp -pthread QPEOMP.o $(ENGINE_OMP_OBJS) tokenizer/src/tokenizer.o connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
+QPEOMP: QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) connectEngine.o
+	$(CC) $(CFLAGS) -fopenmp -pthread QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Link rule for QPEMPI (has a main, needs MPI)
-QPEMPI: QPEMPI.o $(ENGINE_MPI_OBJS) tokenizer/src/tokenizer.o connectEngine.o
-	mpicc $(CFLAGS) QPEMPI.o $(ENGINE_MPI_OBJS) tokenizer/src/tokenizer.o connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
+QPEMPI: QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS) connectEngine.o
+	mpicc $(CFLAGS) QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Pattern rule for test executables (placed under build/tests)
 $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)
@@ -85,16 +84,16 @@ $(TEST_BIN_DIR)/test_tokenizer_new: tests/test_tokenizer_new.c $(ENGINE_SERIAL_O
 	$(CC) $(CFLAGS) $< $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Engine object build rule
-engine/serial/%.o: engine/serial/%.c include/bplus.h
+engine/serial/%.o: engine/serial/%.c include/*.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-engine/omp/%.o: engine/omp/%.c include/bplus.h
+engine/omp/%.o: engine/omp/%.c include/*.h
 	$(CC) $(CFLAGS) -fopenmp -c $< -o $@
 
-engine/mpi/%.o: engine/mpi/%.c include/bplus.h
+engine/mpi/%.o: engine/mpi/%.c include/*.h
 	mpicc $(CFLAGS) -c $< -o $@
 
-engine/%.o: engine/%.c include/bplus.h
+engine/%.o: engine/%.c include/*.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Tokenizer object build rule
