@@ -17,6 +17,7 @@
 #define TABLE_NAME "commands"
 #define MAX_TOKENS 100
 #define ROW_LIMIT 20
+#define MAX_QUERIES 1000
 
 // Optimal indexes constant
 static const char* optimalIndexes[] = {
@@ -136,6 +137,10 @@ static void free_where_clause_list(struct whereClauseS *head) {
     }
 }
 
+// MAJOR TO-DOs: Initialize engine on Rank 0 only and broadcast to others. Currently each rank initializes its own engine which is inefficient for large datasets.
+// Process all queries in one rank (must be serial), then scatter results to other ranks for printing. Currently each rank processes its own queries which may lead to unbalanced workloads.
+// GATHER results from all ranks to Rank 0 for unified output. Currently each rank prints its own results which may be disorganized.
+
 int main(int argc, char *argv[]) {
     
     // Initialize MPI Environment
@@ -199,7 +204,6 @@ int main(int argc, char *argv[]) {
     double loadTimeTaken = MPI_Wtime() - totalStart;
 
     // Split queries into an array
-    #define MAX_QUERIES 1000
     char *queries[MAX_QUERIES];
     int query_count = 0;
     
@@ -211,6 +215,10 @@ int main(int argc, char *argv[]) {
 
     // Execute Queries
     for (int i = 0; i < query_count; i++) {
+        // Divide queries among ranks
+        if (i % size != rank) continue;
+
+        // Get the current query and trim whitespace
         char *query = trim(queries[i]);
         if (!*query) continue;
         
