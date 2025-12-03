@@ -62,4 +62,6 @@ void destroy_tree(node *root);
 // Key comparison function
 int compare_keys(const KEY_T *key1, const KEY_T *key2);
 
+void set_rank(int rank);
+
 #endif // BPLUS_SERIAL_H

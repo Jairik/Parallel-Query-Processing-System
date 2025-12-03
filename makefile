@@ -70,8 +70,8 @@ QPEOMP: QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) connectEngine.o
 	$(CC) $(CFLAGS) -fopenmp -pthread QPEOMP.o $(ENGINE_OMP_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
 
 # Link rule for QPEMPI (has a main, needs MPI)
-QPEMPI: QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS) connectEngine.o
-	mpicc $(CFLAGS) QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS) connectEngine.o $(LDFLAGS) $(LDLIBS) -o $@
+QPEMPI: QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS)
+	mpicc $(CFLAGS) QPEMPI.o $(ENGINE_MPI_OBJS) $(TOKENIZER_OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Pattern rule for test executables (placed under build/tests)
 $(TEST_BIN_DIR)/%: tests/%.c $(ENGINE_SERIAL_OBJS) $(TOKENIZER_OBJS)

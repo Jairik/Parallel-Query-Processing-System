@@ -20,6 +20,15 @@ int order = ORDER;           // Runtime copy (could allow dynamic tuning).
 node *queue = NULL;          // Head of BFS print queue.
 bool verbose_output = false; // When true, emit pointer addresses for debugging.
 
+int current_rank = -1;
+void set_rank(int rank) {
+    current_rank = rank;
+}
+
+static int get_rank() {
+    return current_rank;
+}
+
 /* Queue helpers (internal use for breadth-first printing) */
 static void enqueue(node *new_node);
 static node *dequeue(void);
@@ -446,6 +455,9 @@ static node *makeLeaf(void) {
 
 /* getLeftIndex: Finds child's index in parent->pointers. */
 static int getLeftIndex(node *parent, node *left) {
+    int rank = get_rank();
+    // printf("[Rank %d] DEBUG: getLeftIndex called. parent=%p, left=%p\n", rank, (void*)parent, (void*)left);
+    // fflush(stdout);
     int left_index = 0;
     while (left_index <= parent->num_keys &&
            parent->pointers[left_index] != left)
@@ -457,11 +469,14 @@ static int getLeftIndex(node *parent, node *left) {
 
 /* insertIntoLeaf: Inserts key / row_ptr into non-full leaf maintaining order. */
 static node *insertIntoLeaf(node *leaf, KEY_T key, ROW_PTR row_ptr) {
+    fflush(stdout);
     int i, insertion_point = 0;
 
     while (insertion_point < leaf->num_keys &&
            compare_key(leaf->keys[insertion_point], key) < 0)
         insertion_point++;
+
+    fflush(stdout);
 
     for (i = leaf->num_keys; i > insertion_point; i--) {
         leaf->keys[i] = leaf->keys[i - 1];
@@ -470,23 +485,39 @@ static node *insertIntoLeaf(node *leaf, KEY_T key, ROW_PTR row_ptr) {
     leaf->keys[insertion_point] = key;
     leaf->pointers[insertion_point] = row_ptr;
     leaf->num_keys++;
+    fflush(stdout);
     return leaf;
 }
 
 /* insertIntoLeafAfterSplitting: Splits full leaf and promotes first key of new leaf. */
 static node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key, ROW_PTR row_ptr) {
+    int rank = get_rank();
+    fflush(stdout);
+    
+    if (leaf->keys == NULL) {
+        fflush(stdout);
+        exit(EXIT_FAILURE);
+    }
+
     node *new_leaf = makeLeaf();
+    fflush(stdout);
+
     KEY_T *temp_keys = malloc(order * sizeof(KEY_T));
     void **temp_pointers = malloc(order * sizeof(void *));
     if (!temp_keys || !temp_pointers) {
         perror("Temporary arrays allocation failed");
         exit(EXIT_FAILURE);
     }
+    fflush(stdout);
 
     int insertion_index = 0;
-    while (insertion_index < order - 1 &&
-           compare_key(leaf->keys[insertion_index], key) < 0)
+    while (insertion_index < order - 1) {
+        fflush(stdout);
+        if (compare_key(leaf->keys[insertion_index], key) >= 0)
+            break;
         insertion_index++;
+    }
+    fflush(stdout);
 
     int i, j;
     for (i = 0, j = 0; i < leaf->num_keys; i++, j++) {
@@ -498,6 +529,8 @@ static node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key, ROW
 
     temp_keys[insertion_index] = key;
     temp_pointers[insertion_index] = row_ptr;
+
+    fflush(stdout);
 
     leaf->num_keys = 0;
 
@@ -528,6 +561,8 @@ static node *insertIntoLeafAfterSplitting(node *root, node *leaf, KEY_T key, ROW
 
     new_leaf->parent = leaf->parent;
     KEY_T new_key = new_leaf->keys[0];
+
+    fflush(stdout);
 
     return insertIntoParent(root, leaf, new_key, new_leaf);
 }
@@ -634,24 +669,36 @@ static node *insertIntoNodeAfterSplitting(node *root, node *old_node, int left_i
 
 /* insertIntoParent: Chooses between simple insert, split, or new root creation. */
 static node *insertIntoParent(node *root, node *left, KEY_T key, node *right) {
+    int rank = get_rank();
+    fflush(stdout);
     int left_index;
     node *parent;
 
     parent = left->parent;
+    fflush(stdout);
 
-    if (parent == NULL)
+    if (parent == NULL) {
+        fflush(stdout);
         return insertIntoNewRoot(left, key, right);
+    }
 
+    fflush(stdout);
     left_index = getLeftIndex(parent, left);
+    fflush(stdout);
 
-    if (parent->num_keys < order - 1)
+    if (parent->num_keys < order - 1) {
+        fflush(stdout);
         return insertIntoNode(root, parent, left_index, key, right);
+    }
 
+    fflush(stdout);
     return insertIntoNodeAfterSplitting(root, parent, left_index, key, right);
 }
 
 /* insertIntoNewRoot: Builds new root after old root splits. */
 static node *insertIntoNewRoot(node *left, KEY_T key, node *right) {
+    int rank = get_rank();
+    fflush(stdout);
     node *root = makeNode();
     root->keys[0] = key;
     root->pointers[0] = left;
@@ -660,6 +707,7 @@ static node *insertIntoNewRoot(node *left, KEY_T key, node *right) {
     root->parent = NULL;
     left->parent = root;
     right->parent = root;
+    fflush(stdout);
     return root;
 }
 
@@ -677,10 +725,12 @@ static node *startNewTree(KEY_T key, ROW_PTR row_ptr) {
 /* ==================== Public insert (upsert) ==================== */
 
 node *insert(node *root, KEY_T key, ROW_PTR row_ptr) {
+    fflush(stdout);
     if (root == NULL)
         return startNewTree(key, row_ptr);
 
     node *leaf = findLeaf(root, key, false);
+    fflush(stdout);
 
     /* Duplicates allowed: removed upsert check */
 

@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
     char *queries[MAX_QUERIES];
     int query_count = 0;
     
+    // Run sequentially to populate queries array
     char *token = strtok(buffer, ";");
     while (token && query_count < MAX_QUERIES) {
         queries[query_count++] = token;
