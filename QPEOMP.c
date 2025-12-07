@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
     #pragma omp barrier
 
     // End timer for engine initialization
-    double initTimeTaken = ((double)omp_get_wtime() - totalStart) / CLOCKS_PER_SEC;
+    double initTimeTaken = omp_get_wtime() - totalStart;
 
     // Load the COMMANDS into memory (from COMMAND text file)
     const char *query_file = "sample-queries.txt";
@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
     fclose(fp);
 
     // End timer for loading queries
-    double loadTimeTaken = ((double)omp_get_wtime() - totalStart) / CLOCKS_PER_SEC;
+    double loadTimeTaken = omp_get_wtime() - totalStart;
 
     // Split queries into an array to avoid strtok race conditions
     #define MAX_QUERIES 1000
@@ -279,7 +279,7 @@ int main(int argc, char *argv[]) {
                 free_where_clause_list(whereClause);
             }
             
-            execTime = (double)(omp_get_wtime() - start) / CLOCKS_PER_SEC;
+            execTime = omp_get_wtime() - start;
         } else {
             parseFailed = true;
         }
@@ -296,15 +296,15 @@ int main(int argc, char *argv[]) {
                     if (parsed.num_values != 12) {
                         printf("Error: INSERT requires exactly 12 values.\n");
                     } else if (success) {
-                        printf("Insert successful. Execution Time: %ld\n\n", (long)execTime);
+                        printf("Insert successful. Execution Time: %.4f seconds\n\n", execTime);
                     } else {
-                        printf("Insert failed. Execution Time: %ld\n\n", (long)execTime);
+                        printf("Insert failed. Execution Time: %.4f seconds\n\n", execTime);
                     }
                 } else if (parsed.command == CMD_DELETE) {
                     if (result) {
-                        printf("Delete successful. Rows affected: %d. Execution Time: %ld\n\n", rowsAffected, (long)execTime);
+                        printf("Delete successful. Rows affected: %d. Execution Time: %.4f seconds\n\n", rowsAffected, execTime);
                     } else {
-                        printf("Delete failed. Execution Time: %ld\n\n", (long)execTime);
+                        printf("Delete failed. Execution Time: %.4f seconds\n\n", execTime);
                     }
                 } else if (parsed.command == CMD_SELECT) {
                     printTable(NULL, result, ROW_LIMIT);
@@ -325,7 +325,7 @@ int main(int argc, char *argv[]) {
     destroyEngineOMP(engine);
 
     // Print total runtime statistics in pretty colors
-    double totalTimeTaken = ((double)omp_get_wtime() - totalStart) / CLOCKS_PER_SEC;
+    double totalTimeTaken = omp_get_wtime() - totalStart;
     printf(CYAN "======= Execution Summary =======" RESET "\n");
     printf(CYAN "Engine Initialization Time: " RESET YELLOW "%.4f seconds\n" RESET, initTimeTaken);
     printf(CYAN "Query Loading Time: " RESET YELLOW "%.4f seconds\n" RESET, loadTimeTaken - initTimeTaken);

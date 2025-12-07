@@ -297,15 +297,15 @@ int main(int argc, char *argv[]) {
                     if (parsed.num_values != 12) {
                         printf("Error: INSERT requires exactly 12 values.\n");
                     } else if (success) {
-                        printf("Insert successful. Execution Time: %ld\n\n", (long)execTime);
+                        printf("Insert successful. Execution Time: %.4f seconds\n\n", execTime);
                     } else {
-                        printf("Insert failed. Execution Time: %ld\n\n", (long)execTime);
+                        printf("Insert failed. Execution Time: %.4f seconds\n\n", execTime);
                     }
                 } else if (parsed.command == CMD_DELETE) {
                     if (result) {
-                        printf("Delete successful. Rows affected: %d. Execution Time: %ld\n\n", rowsAffected, (long)execTime);
+                        printf("Delete successful. Rows affected: %d. Execution Time: %.4f seconds\n\n", rowsAffected, execTime);
                     } else {
-                        printf("Delete failed. Execution Time: %ld\n\n", (long)execTime);
+                        printf("Delete failed. Execution Time: %.4f seconds\n\n", execTime);
                     }
                 } else if (parsed.command == CMD_SELECT) {
                     printTable(NULL, result, ROW_LIMIT);
