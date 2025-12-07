@@ -213,12 +213,11 @@ int main(int argc, char *argv[]) {
         token = strtok(NULL, ";");
     }
 
-    // Execute Queries
+    // Execute Queries - Distribute across MPI ranks
     for (int i = 0; i < query_count; i++) {
-        // Divide queries among ranks
+        // Round-robin distribution: each rank processes queries where i % size == rank
         if (i % size != rank) continue;
-
-        // Get the current query and trim whitespace
+        
         char *query = trim(queries[i]);
         if (!*query) continue;
         
@@ -283,9 +282,13 @@ int main(int argc, char *argv[]) {
             parseFailed = true;
         }
 
-        // Print results (Rank 0 only)
-        if (rank == 0) {
-            printf("Executing Query: %s\n", query);
+        // Synchronize all ranks before printing to ensure ordered output
+        MPI_Barrier(MPI_COMM_WORLD);
+        
+        // Print results in rank order
+        for (int print_rank = 0; print_rank < size; print_rank++) {
+            if (rank == print_rank) {
+                printf("Executing Query: %s\n", query);
             
             if (parseFailed) {
                 printf("Tokenization failed.\n");
@@ -313,6 +316,8 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Unsupported command.\n");
                 }
             }
+            }
+            MPI_Barrier(MPI_COMM_WORLD);
         }
 
         // Cleanup
