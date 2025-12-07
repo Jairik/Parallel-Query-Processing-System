@@ -40,13 +40,19 @@ The system provides a full pipeline—from data generation to query parsing to p
 gcc QPESeq.c -o QPESeq
 ./QPESeq db.txt sql.txt
 
+w/ makefile: make run
+
 # OpenMP version
 gcc -fopenmp QPEOMP.c -o QPEOMP
 ./QPEOMP db.txt sql.txt
 
+w/ makefile: make run-omp
+
 # MPI version
 mpicc QPEMPI.c -o QPEMPI
 mpirun -np <num_processes> ./QPEMPI db.txt sql.txt
+
+w/ makefile: make run-mpi
 ```
 
 <!--
