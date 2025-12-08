@@ -23,7 +23,11 @@
 
 There should be minimal default row indexes, as each one will require a seperate B+ tree to be stored in memory. Below are the currently chosen *default* indexes:
 
-- TODO
+- `command_id` (UINT64)
+- `user_id` (INT)
+- `risk_level` (INT)
+- `exit_code` (INT)
+- `sudo_used` (BOOL)
 
 ## Generation
 

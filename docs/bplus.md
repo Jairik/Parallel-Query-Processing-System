@@ -47,10 +47,10 @@ The engine is structured into three core components:
 1. **bplus.c**
    Implements the B+ tree storage structure itself.
 
-2. **buildEngine-serial.c**
+2. **buildEngine-*.c** (serial, omp, mpi)
    Builds tables and creates B+ tree indexes over chosen attributes.
 
-3. **queryEngine-serial.c**
+3. **executeEngine-*.c** (serial, omp, mpi)
    Executes commands (SELECT, WHERE) and uses the B+ tree for fast lookups.
 
 ### Index Lifecycle

@@ -1,6 +1,6 @@
 # Engine Documentation
 
-This document is a comprehensive technical reference for the Serial engine used by the Parallel-Query-Processing-System repository. It describes the B+ tree index implementation, build utilities that load CSV data and construct indexes, and the execute engine that implements SQL-like operations (SELECT, INSERT, DELETE). The goal is to make the codebase easy to understand for contributors who need to maintain, extend, or benchmark the engine.
+This document is a comprehensive technical reference for the engines used by the Parallel-Query-Processing-System repository. It describes the B+ tree index implementation, build utilities that load CSV data and construct indexes, and the execute engines that implement SQL-like operations (SELECT, INSERT, DELETE). While the Serial engine is described in detail, the OpenMP and MPI implementations follow a similar structure.
 
 Table of Contents
 - Section 1 — B+ Tree (structure, public API, internals)
@@ -62,10 +62,11 @@ Design notes and caveats
 
 ## Section 2 — Build Engine
 
-Files: `engine/serial/buildEngine-serial.c`, `include/buildEngine-serial.h`, `engine/recordSchema.c`, `include/recordSchema.h`
+Files: `engine/*/buildEngine-*.c`, `include/buildEngine-*.h`, `engine/recordSchema.c`, `include/recordSchema.h`
 
 Purpose
 - Load CSV data into an in-memory `record **` representation and provide helpers to build B+ tree indexes from those records.
+- Note: Each implementation (Serial, OpenMP, MPI) has its own build engine file (e.g., `buildEngine-serial.c`, `buildEngine-omp.c`, `buildEngine-mpi.c`).
 
 Key functions and behavior
 - `record **getAllRecordsFromFile(const char *filepath, int *num_records)`
@@ -92,10 +93,11 @@ Design notes
 
 ## Section 3 — Execute Engine
 
-Files: `engine/serial/executeEngine-serial.c`, `include/executeEngine-serial.h`
+Files: `engine/*/executeEngine-*.c`, `include/executeEngine-*.h`
 
 Purpose
 - Implements application-level query execution (SELECT / INSERT / DELETE) and query predicate evaluation. Connects in-memory records, persistent CSV storage, and B+ tree indexes.
+- Note: Each implementation (Serial, OpenMP, MPI) has its own execute engine file.
 
 Core types
 - `struct engineS` — engine state with fields for in-memory records, index roots, index metadata, and the CSV datafile path.
