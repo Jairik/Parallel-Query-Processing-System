@@ -65,19 +65,34 @@ def main(stdscr):
     # Select Dataset
     datasets = get_datasets()
     if not datasets:
-        return None, "No CSV files found in data-generation/"
+        return None, "No CSV files found in data-generation/", None
     
     datasets.append("Exit")
     dataset = select_option(stdscr, "Select Dataset (Use Arrow Keys + Enter)", datasets)
     
     if dataset == "Exit":
-        return "Exit", None
+        return "Exit", None, None
 
     # Select Benchmark Version
     benchmarks = ["Serial", "OMP", "MPI", "ALL", "Exit"]
     benchmark = select_option(stdscr, "Select Benchmark to Run", benchmarks)
 
-    return benchmark, dataset
+    if benchmark == "Exit":
+        return "Exit", None, None
+
+    # Select Cores
+    cores = None
+    if benchmark in ["OMP", "MPI", "ALL"]:
+        try:
+            num_cpus = os.cpu_count()
+            if num_cpus is None: num_cpus = 4
+        except:
+            num_cpus = 4
+            
+        core_options = ["ALL"] + [str(i) for i in range(1, num_cpus + 1)]
+        cores = select_option(stdscr, "Select Number of Cores", core_options)
+
+    return benchmark, dataset, cores
 
 def run_benchmark():
     # Run make silently
@@ -86,55 +101,67 @@ def run_benchmark():
 
     # Show Menu
     try:
-        selection, dataset = curses.wrapper(main)
+        result = curses.wrapper(main)
+        if not result: return
+        selection, dataset, cores = result
     except Exception as e:
         print(f"Error in UI: {e}")
-        # run_command("make clean", silent=True)
         return
 
-    if selection == "Exit" or selection is None:
-        if dataset and dataset != "Exit":
-             print(dataset) # Print error message if any
+    if selection is None:
+        if dataset:
+             print(dataset) # Print error message
+        return
+
+    if selection == "Exit":
         print("Exiting...")
-        # run_command("make clean", silent=True)
         return
 
-    print(f"\nRunning {selection} Benchmark with dataset: {dataset}\n" + "="*60 + "\n")
+    print(f"\nRunning {selection} Benchmark with dataset: {dataset}")
+    if cores:
+        print(f"Cores: {cores}")
+    print("="*60 + "\n")
+
+    # Determine core count
+    omp_prefix = ""
+    mpi_prefix = ""
+    
+    if cores:
+        count = 0
+        # Divide cores by 2 to account for threading stuff - quick fix
+        if cores == "ALL":
+            count = os.cpu_count()/2 or 4
+        else:
+            count = int(cores)/2
+            
+        omp_prefix = f"OMP_NUM_THREADS={count} "
+        mpi_prefix = f"mpirun -np {count} "
 
     # Run Selected
     start_time = time.time() 
     
-    # Pass dataset as ARGS
-    # args = f'ARGS="{dataset}"'
-    
-    # Run the executable of the select benchmark, avoid make rules for overhead concerns
     if selection == "Serial":
         run_command(f"./QPESeq {dataset}")
     
     elif selection == "OMP":
-        run_command(f"./QPEOMP {dataset}")
+        run_command(f"{omp_prefix}./QPEOMP {dataset}")
     
     elif selection == "MPI":
-        run_command(f"./QPEMPI {dataset}")
+        run_command(f"{mpi_prefix}./QPEMPI {dataset}")
     
     elif selection == "ALL":
         print("--- Running Serial ---")
         run_command(f"./QPESeq {dataset}")
         
         print("\n--- Running OMP ---")
-        run_command(f"./QPEOMP {dataset}")
+        run_command(f"{omp_prefix}./QPEOMP {dataset}")
         
         print("\n--- Running MPI ---")
-        run_command(f"./QPEMPI {dataset}")
+        run_command(f"{mpi_prefix}./QPEMPI {dataset}")
 
     end_time = time.time()
     print("\n" + "="*60)
     print(f"Total Benchmark Time: {end_time - start_time:.4f} seconds")
-
-    # # Run make clean silently
-    # print("Cleaning up build artifacts...")
-    # run_command("make clean", silent=True)
-    # print("Done.")
 
 if __name__ == "__main__":
     run_benchmark()
