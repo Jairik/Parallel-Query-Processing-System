@@ -177,10 +177,13 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
 
             // Execute Insert
             clock_t insertStart = clock();  // Start timer for benchmarking
-            if (executeQueryInsertSerial(engine, parsed.table, &r)) {
-                printf("Insert successful. Execution Time: %ld\n\n", (clock() - insertStart) / CLOCKS_PER_SEC);
+            bool success = executeQueryInsertSerial(engine, parsed.table, &r);
+            double timeTaken = (double)(clock() - insertStart) / CLOCKS_PER_SEC;
+
+            if (success) {
+                printf("Insert successful. Execution Time: %.6f\n\n", timeTaken);
             } else {
-                printf("Insert failed. Execution Time: %ld\n\n", (clock() - insertStart) / CLOCKS_PER_SEC);
+                printf("Insert failed. Execution Time: %.6f\n\n", timeTaken);
             }
 
             return;
@@ -193,12 +196,13 @@ void run_test_query(struct engineS *engine, const char *query, int max_rows) {
             // Execute delete
             clock_t deleteStart = clock();  // Start timer for benchmarking
             struct resultSetS *result = executeQueryDeleteSerial(engine, parsed.table, whereClause);
+            double timeTaken = (double)(clock() - deleteStart) / CLOCKS_PER_SEC;
 
             if (result) {
-                printf("Delete successful. Rows affected: %d. Execution Time: %ld\n\n", result->numRecords, ((clock() - deleteStart) / CLOCKS_PER_SEC));
+                printf("Delete successful. Rows affected: %d. Execution Time: %.6f\n\n", result->numRecords, timeTaken);
                 freeResultSet(result);
             } else {
-                printf("Delete failed. Execution Time: %ld\n\n", ((clock() - deleteStart) / CLOCKS_PER_SEC));
+                printf("Delete failed. Execution Time: %.6f\n\n", timeTaken);
             }
 
             free_where_clause_list(whereClause);

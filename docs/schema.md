@@ -31,4 +31,4 @@ There should be minimal default row indexes, as each one will require a seperate
 
 ## Generation
 
-Acheived via `generate_commands.py`. Will use some C-level ML to dynamically assign risk level at runtime at later phases.
+Acheived via `generate_commands.py`. Could use some C-level ML to dynamically assign risk level at runtime at later phases.
