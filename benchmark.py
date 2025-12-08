@@ -4,7 +4,7 @@ import sys
 import os
 import time
 
-def run_command(command, silent=False):
+def run_command(command, silent=False, dataset=None):
     """Runs a shell command."""
     try:
         if silent:
@@ -89,14 +89,14 @@ def run_benchmark():
         selection, dataset = curses.wrapper(main)
     except Exception as e:
         print(f"Error in UI: {e}")
-        run_command("make clean", silent=True)
+        # run_command("make clean", silent=True)
         return
 
     if selection == "Exit" or selection is None:
         if dataset and dataset != "Exit":
              print(dataset) # Print error message if any
         print("Exiting...")
-        run_command("make clean", silent=True)
+        # run_command("make clean", silent=True)
         return
 
     print(f"\nRunning {selection} Benchmark with dataset: {dataset}\n" + "="*60 + "\n")
@@ -105,30 +105,36 @@ def run_benchmark():
     start_time = time.time() 
     
     # Pass dataset as ARGS
-    args = f'ARGS="{dataset}"'
+    # args = f'ARGS="{dataset}"'
     
+    # Run the executable of the select benchmark, avoid make rules for overhead concerns
     if selection == "Serial":
-        run_command(f"make run {args}")
+        run_command(f"./QPESeq {dataset}")
+    
     elif selection == "OMP":
-        run_command(f"make run-omp {args}")
+        run_command(f"./QPEOMP {dataset}")
+    
     elif selection == "MPI":
-        run_command(f"make run-mpi {args}")
+        run_command(f"./QPEMPI {dataset}")
+    
     elif selection == "ALL":
         print("--- Running Serial ---")
-        run_command(f"make run {args}")
+        run_command(f"./QPESeq {dataset}")
+        
         print("\n--- Running OMP ---")
-        run_command(f"make run-omp {args}")
+        run_command(f"./QPEOMP {dataset}")
+        
         print("\n--- Running MPI ---")
-        run_command(f"make run-mpi {args}")
+        run_command(f"./QPEMPI {dataset}")
 
     end_time = time.time()
     print("\n" + "="*60)
     print(f"Total Benchmark Time: {end_time - start_time:.4f} seconds")
 
-    # Run make clean silently
-    print("Cleaning up build artifacts...")
-    run_command("make clean", silent=True)
-    print("Done.")
+    # # Run make clean silently
+    # print("Cleaning up build artifacts...")
+    # run_command("make clean", silent=True)
+    # print("Done.")
 
 if __name__ == "__main__":
     run_benchmark()
