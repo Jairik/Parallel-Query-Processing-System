@@ -108,7 +108,7 @@ test: $(TEST_BINS)
 
 # Run the serial version
 run: QPESeq
-	./QPESeq
+	./QPESeq $(ARGS)
 
 # Default OpenMP thread count unless overridden
 OMP_THREADS ?= 4
@@ -116,7 +116,7 @@ OMP_THREADS ?= 4
 # Run OpenMP version correctly — env var applies only to this command
 run-omp: QPEOMP
 	@echo "Running with OMP_NUM_THREADS=$(OMP_THREADS)"
-	@env OMP_NUM_THREADS=$(OMP_THREADS) ./QPEOMP
+	@env OMP_NUM_THREADS=$(OMP_THREADS) ./QPEOMP $(ARGS)
 
 # Default MPI process count unless overridden
 MPI_PROCS ?= 4
@@ -124,8 +124,8 @@ MPI_PROCS ?= 4
 # Run MPI version with proper launcher syntax
 run-mpi: QPEMPI
 	@echo "Running with $(MPI_PROCS) MPI processes..."
-	@mpirun -np $(MPI_PROCS) ./QPEMPI 2>/dev/null \
-	 || mpiexec -np $(MPI_PROCS) ./QPEMPI
+	@mpirun -np $(MPI_PROCS) ./QPEMPI $(ARGS) 2>/dev/null \
+	 || mpiexec -np $(MPI_PROCS) ./QPEMPI $(ARGS)
 
 # Run QPESeq under Valgrind to check for memory leaks
 valgrind: QPESeq

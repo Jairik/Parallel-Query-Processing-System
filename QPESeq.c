@@ -15,8 +15,11 @@
 
 int main(int argc, char *argv[]) {
     
-    // NOTE: defaulting to sample queries file for ease of testing. Can implement CLI arg later.
-    (void)argc; (void)argv; // Unused for now. Prevent warnings.
+    // Determine data file from CLI args or default
+    const char *dataFile = DATA_FILE;
+    if (argc > 1) {
+        dataFile = argv[1];
+    }
 
     // Start a timer for total runtime statistics
     clock_t totalStart = clock();
@@ -26,7 +29,7 @@ int main(int argc, char *argv[]) {
         numOptimalIndexes,  // Number of indexes
         optimalIndexes,  // Indexes to build B+ trees for
         (const int *)optimalIndexTypes,  // Index types
-        DATA_FILE,
+        dataFile,
         TABLE_NAME
     );
 

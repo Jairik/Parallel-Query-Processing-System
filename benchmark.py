@@ -15,13 +15,11 @@ def run_command(command, silent=False):
         if not silent:
             print(f"Error running command: {command}")
             print(f"Exit code: {e.returncode}")
-        # We don't raise here to allow the script to continue to cleanup
 
-def draw_menu(stdscr, selected_row_idx, options):
+def draw_menu(stdscr, selected_row_idx, options, title):
     stdscr.clear()
     h, w = stdscr.getmaxyx()
     
-    title = "Select Benchmark to Run (Use Arrow Keys + Enter)"
     stdscr.addstr(h//2 - len(options)//2 - 2, w//2 - len(title)//2, title)
 
     for idx, row in enumerate(options):
@@ -36,17 +34,10 @@ def draw_menu(stdscr, selected_row_idx, options):
 
     stdscr.refresh()
 
-def main(stdscr):
-    # Setup colors
-    curses.start_color()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.curs_set(0)
-
-    options = ["Serial", "OMP", "MPI", "ALL", "Exit"]
+def select_option(stdscr, title, options):
     selected_row_idx = 0
-
     while True:
-        draw_menu(stdscr, selected_row_idx, options)
+        draw_menu(stdscr, selected_row_idx, options, title)
         key = stdscr.getch()
 
         if key == curses.KEY_UP and selected_row_idx > 0:
@@ -56,6 +47,38 @@ def main(stdscr):
         elif key == curses.KEY_ENTER or key in [10, 13]:
             return options[selected_row_idx]
 
+def get_datasets():
+    data_dir = "data-generation"
+    if not os.path.exists(data_dir):
+        return []
+    files = [f for f in os.listdir(data_dir) if f.endswith(".csv")]
+    files.sort()
+    # Return relative paths
+    return [os.path.join(data_dir, f) for f in files]
+
+def main(stdscr):
+    # Setup colors
+    curses.start_color()
+    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.curs_set(0)
+
+    # Select Dataset
+    datasets = get_datasets()
+    if not datasets:
+        return None, "No CSV files found in data-generation/"
+    
+    datasets.append("Exit")
+    dataset = select_option(stdscr, "Select Dataset (Use Arrow Keys + Enter)", datasets)
+    
+    if dataset == "Exit":
+        return "Exit", None
+
+    # Select Benchmark Version
+    benchmarks = ["Serial", "OMP", "MPI", "ALL", "Exit"]
+    benchmark = select_option(stdscr, "Select Benchmark to Run", benchmarks)
+
+    return benchmark, dataset
+
 def run_benchmark():
     # Run make silently
     print("Building project... (this may take a moment)")
@@ -63,40 +86,43 @@ def run_benchmark():
 
     # Show Menu
     try:
-        # curses.wrapper handles initialization and cleanup of curses
-        selection = curses.wrapper(main)
+        selection, dataset = curses.wrapper(main)
     except Exception as e:
         print(f"Error in UI: {e}")
-        # Ensure cleanup happens even if UI fails
         run_command("make clean", silent=True)
         return
 
-    if selection == "Exit":
+    if selection == "Exit" or selection is None:
+        if dataset and dataset != "Exit":
+             print(dataset) # Print error message if any
         print("Exiting...")
         run_command("make clean", silent=True)
         return
 
-    print(f"\nRunning {selection} Benchmark...\n" + "="*40 + "\n")
+    print(f"\nRunning {selection} Benchmark with dataset: {dataset}\n" + "="*60 + "\n")
 
     # Run Selected
-    start_time = time.time()
+    start_time = time.time() 
+    
+    # Pass dataset as ARGS
+    args = f'ARGS="{dataset}"'
     
     if selection == "Serial":
-        run_command("make run")
+        run_command(f"make run {args}")
     elif selection == "OMP":
-        run_command("make run-omp")
+        run_command(f"make run-omp {args}")
     elif selection == "MPI":
-        run_command("make run-mpi")
+        run_command(f"make run-mpi {args}")
     elif selection == "ALL":
         print("--- Running Serial ---")
-        run_command("make run")
+        run_command(f"make run {args}")
         print("\n--- Running OMP ---")
-        run_command("make run-omp")
+        run_command(f"make run-omp {args}")
         print("\n--- Running MPI ---")
-        run_command("make run-mpi")
+        run_command(f"make run-mpi {args}")
 
     end_time = time.time()
-    print("\n" + "="*40)
+    print("\n" + "="*60)
     print(f"Total Benchmark Time: {end_time - start_time:.4f} seconds")
 
     # Run make clean silently

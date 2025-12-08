@@ -151,6 +151,12 @@ int main(int argc, char *argv[]) {
     
     set_rank(rank);
 
+    // Determine data file from CLI args or default
+    const char *dataFile = DATA_FILE;
+    if (argc > 1) {
+        dataFile = argv[1];
+    }
+
     // Start a timer for total runtime statistics
     double totalStart = MPI_Wtime();
 
@@ -159,7 +165,7 @@ int main(int argc, char *argv[]) {
         numOptimalIndexes,  // Number of indexes
         optimalIndexes,  // Indexes to build B+ trees for
         (const int *)optimalIndexTypes,  // Index types
-        DATA_FILE,
+        dataFile,
         TABLE_NAME
     );
 

@@ -145,9 +145,22 @@ int main(int argc, char *argv[]) {
     printf("Starting main...\n"); fflush(stdout);
         
     // Pull out number of defined threads from CLI args (default to 8)
+    // Arg 1 can be Data File or Thread Count
     int num_threads = 8;
-    if (argc >= 2) {
-        num_threads = atoi(argv[1]);
+    const char *dataFile = DATA_FILE;
+
+    if (argc > 1) {
+        // If first char is digit, assume it's thread count (legacy support)
+        if (isdigit(argv[1][0])) {
+            num_threads = atoi(argv[1]);
+        } else {
+            // Otherwise it's the data file
+            dataFile = argv[1];
+            // And second arg is threads
+            if (argc > 2) {
+                num_threads = atoi(argv[2]);
+            }
+        }
     }
     omp_set_num_threads(num_threads);
 
@@ -160,7 +173,7 @@ int main(int argc, char *argv[]) {
         numOptimalIndexes,  // Number of indexes
         optimalIndexes,  // Indexes to build B+ trees for
         (const int *)optimalIndexTypes,  // Index types
-        DATA_FILE,
+        dataFile,
         TABLE_NAME
     );
     printf("Engine Initialized.\n"); fflush(stdout);
