@@ -742,71 +742,67 @@ struct resultSetS *executeQueryDeleteMPI(
 
     // Total deleted count across all ranks
     int globalDeleted = 0;
-    MPI_Reduce(&localDeleted, &globalDeleted, 1, MPI_INT, MPI_SUM, 0, comm);
+    MPI_Allreduce(&localDeleted, &globalDeleted, 1, MPI_INT, MPI_SUM, comm);
 
-    // Gather all flags on rank 0
-    int *recvCounts = NULL;
-    int *displs     = NULL;
-    int *globalFlags = NULL;
+    // Gather all flags on ALL ranks
+    int *recvCounts = (int *)malloc(size * sizeof(int));
+    int *displs     = (int *)malloc(size * sizeof(int));
+    int *globalFlags = (int *)calloc(num_records, sizeof(int));
 
-    if (rank == 0) {
-        recvCounts = (int *)malloc(size * sizeof(int));
-        displs     = (int *)malloc(size * sizeof(int));
-    }
-
-    // Each rank sends its local_n
-    MPI_Gather(&local_n, 1, MPI_INT,
+    // Share counts with everyone
+    MPI_Allgather(&local_n, 1, MPI_INT,
                recvCounts, 1, MPI_INT,
-               0, comm);
+               comm);
 
-    if (rank == 0) {
-        int offset = 0;
-        for (int r = 0; r < size; r++) {
-            displs[r]     = offset;
-            offset       += recvCounts[r];
-        }
-
-        globalFlags = (int *)calloc(num_records, sizeof(int));
+    // Calculate displacements
+    int offset = 0;
+    for (int r = 0; r < size; r++) {
+        displs[r] = offset;
+        offset   += recvCounts[r];
     }
 
-    MPI_Gatherv(localFlags, local_n, MPI_INT,
+    // Share flags with everyone
+    MPI_Allgatherv(localFlags, local_n, MPI_INT,
                 globalFlags, recvCounts, displs, MPI_INT,
-                0, comm);
+                comm);
 
     if (localFlags) {
         free(localFlags);
     }
 
-    // Rank 0 applies deletions, updates indexes, compacts array, writes CSV
-    if (rank == 0) {
-        int writeIndex = 0;
+    // ALL ranks apply deletions to keep memory and indexes in sync
+    int writeIndex = 0;
 
-        for (int i = 0; i < num_records; i++) {
-            record *currentRecord = engine->all_records[i];
+    for (int i = 0; i < num_records; i++) {
+        record *currentRecord = engine->all_records[i];
 
-            if (globalFlags[i]) {
-                // Remove from B+ Tree Indexes
-                for (int j = 0; j < engine->num_indexes; j++) {
+        if (globalFlags[i]) {
+            // Remove from B+ Tree Indexes
+            // CRITICAL: Only update indexes owned by this rank
+            for (int j = 0; j < engine->num_indexes; j++) {
+                if (j % size == rank) {
                     const char *indexed_attr = engine->indexed_attributes[j];
                     KEY_T key = extract_key_from_record(currentRecord, indexed_attr);
                     engine->bplus_tree_roots[j] =
                         delete(engine->bplus_tree_roots[j], key, (ROW_PTR)currentRecord);
                 }
-
-                // Free record memory
-                free(currentRecord);
-            } else {
-                // Keep record and compact
-                if (writeIndex != i) {
-                    engine->all_records[writeIndex] = currentRecord;
-                }
-                writeIndex++;
             }
+
+            // Free record memory (All ranks must free their local copy)
+            free(currentRecord);
+        } else {
+            // Keep record and compact
+            if (writeIndex != i) {
+                engine->all_records[writeIndex] = currentRecord;
+            }
+            writeIndex++;
         }
+    }
 
-        engine->num_records = writeIndex;
+    engine->num_records = writeIndex;
 
-        // Rewrite CSV with remaining records
+    // Only Rank 0 rewrites the file
+    if (rank == 0) {
         FILE *file = fopen(engine->datafile, "w");
         if (file != NULL) {
             for (int i = 0; i < engine->num_records; i++) {
@@ -833,20 +829,17 @@ struct resultSetS *executeQueryDeleteMPI(
                         engine->datafile);
             }
         }
-
-        double time_taken = MPI_Wtime() - start;
-
-        result->numRecords = globalDeleted;
-        result->queryTime  = time_taken;
-        result->success    = true;
-
-        if (globalFlags) free(globalFlags);
-        if (recvCounts)  free(recvCounts);
-        if (displs)      free(displs);
-    } else {
-        // Non-root ranks: result is not meaningful; optionally set success=false explicitly
-        result->success = false;
     }
+
+    double time_taken = MPI_Wtime() - start;
+
+    result->numRecords = globalDeleted;
+    result->queryTime  = time_taken;
+    result->success    = true;
+
+    if (globalFlags) free(globalFlags);
+    if (recvCounts)  free(recvCounts);
+    if (displs)      free(displs);
 
     return result;
 }
