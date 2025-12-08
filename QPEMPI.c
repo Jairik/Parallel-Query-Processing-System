@@ -151,21 +151,20 @@ int main(int argc, char *argv[]) {
     
     set_rank(rank);
 
-    // Determine data file from CLI args or default
-    const char *dataFile = DATA_FILE;
-    if (argc > 1) {
-        dataFile = argv[1];
-    }
-
     // Start a timer for total runtime statistics
     double totalStart = MPI_Wtime();
+
+    const char *data_file = DATA_FILE;
+    if (argc > 1) {
+        data_file = argv[1];
+    }
 
     // Instantiate an engine object to handle the execution of the query
     struct engineS *engine = initializeEngineMPI(
         numOptimalIndexes,  // Number of indexes
         optimalIndexes,  // Indexes to build B+ trees for
         (const int *)optimalIndexTypes,  // Index types
-        dataFile,
+        data_file,
         TABLE_NAME
     );
 
@@ -292,14 +291,10 @@ int main(int argc, char *argv[]) {
             execTime = MPI_Wtime() - start;
         }
 
-        // Synchronize all ranks before printing to ensure ordered output
-        MPI_Barrier(MPI_COMM_WORLD);
+        // Print results (Owner only) - No barriers for performance
+        if (is_owner) {
+            printf("Executing Query: %s\n", query);
         
-        // Print results in rank order
-        for (int print_rank = 0; print_rank < size; print_rank++) {
-            if (rank == print_rank && is_owner) {
-                printf("Executing Query: %s\n", query);
-            
             if (parseFailed) {
                 printf("Tokenization failed.\n");
             } else {
@@ -326,8 +321,6 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Unsupported command.\n");
                 }
             }
-            }
-            MPI_Barrier(MPI_COMM_WORLD);
         }
 
         // Cleanup
@@ -337,12 +330,12 @@ int main(int argc, char *argv[]) {
     // Print total runtime statistics in pretty colors (Rank 0 only)
     if (rank == 0) {
         double totalTimeTaken = MPI_Wtime() - totalStart;
-        printf(CYAN "======= Execution Summary =======" RESET "\n");
+        printf(CYAN "======= MPI Execution Summary =======" RESET "\n");
         printf(CYAN "Engine Initialization Time: " RESET YELLOW "%.4f seconds\n" RESET, initTimeTaken);
         printf(CYAN "Query Loading Time: " RESET YELLOW "%.4f seconds\n" RESET, loadTimeTaken - initTimeTaken);
         printf(CYAN "Query Execution Time: " RESET YELLOW "%.4f seconds\n" RESET, totalTimeTaken - loadTimeTaken);
         printf(BOLD CYAN "Total Execution Time: " RESET BOLD YELLOW "%.4f seconds" RESET "\n", totalTimeTaken);
-        printf(CYAN "=================================" RESET "\n");
+        printf(CYAN "=====================================" RESET "\n");
     }
 
     // printf("Rank %d: Freeing buffer...\n", rank);

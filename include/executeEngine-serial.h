@@ -21,6 +21,7 @@ struct engineS {
     record **all_records; // Array of all records in the table (for full table scans on non-indexed queries and for assigning row pointers)
     int num_records; // Total number of records in the table
     char *datafile; // Path to the data file
+    void *record_block; // Pointer to the contiguous block of records (if block allocation is used, e.g. in OMP)
 };
 
 /* Result set - The results of any given query 

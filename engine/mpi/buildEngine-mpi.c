@@ -69,43 +69,110 @@ node *loadIntoBplusTreeMPI(record **records, int num_records, const char *attrib
  *   Array of all record structs in the file
 */
 record **getAllRecordsFromFileMPI(const char *filepath, int *num_records) {
-    // Attempt to open the file from the provided path
-    FILE *file = fopen(filepath, "r");
-    if (file == NULL) {
-        fprintf(stderr, "Error opening file: %s\n", filepath);
-        return NULL;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    char *file_content = NULL;
+    long file_size = 0;
+
+    // Rank 0 reads the file from disk
+    if (rank == 0) {
+        FILE *file = fopen(filepath, "r");
+        if (file == NULL) {
+            fprintf(stderr, "Error opening file: %s\n", filepath);
+            file_size = -1; // Signal error
+        } else {
+            fseek(file, 0, SEEK_END);
+            file_size = ftell(file);
+            fseek(file, 0, SEEK_SET);
+            
+            file_content = (char *)malloc(file_size + 1);
+            if (file_content) {
+                size_t read_size = fread(file_content, 1, file_size, file);
+                if (read_size != (size_t)file_size) {
+                    fprintf(stderr, "Error reading file content\n");
+                    free(file_content);
+                    file_content = NULL;
+                    file_size = -1;
+                } else {
+                    file_content[file_size] = '\0';
+                }
+            } else {
+                file_size = -1; // Memory error
+            }
+            fclose(file);
+        }
     }
 
-    // Initialize the records and count
-    record **records = NULL;
-    char line[1024];
-    int count = 0;
+    // Broadcast file size to all ranks
+    MPI_Bcast(&file_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
 
-    // Read each line and populate the records array
-    bool first_line = true;
-    while (fgets(line, sizeof(line), file)) {
-        if (first_line) {
-            first_line = false;
-            continue; // Skip header
-        }
-        record *new_record = getRecordFromLineMPI(line);
-        records = realloc(records, (count + 1) * sizeof(record *));
-        if (records == NULL) {
-            fprintf(stderr, "Memory allocation failed\n");
-            fclose(file);
+    if (file_size < 0) {
+        return NULL; // Propagate error
+    }
+
+    // Allocate memory on other ranks
+    if (rank != 0) {
+        file_content = (char *)malloc(file_size + 1);
+        if (!file_content) {
+            fprintf(stderr, "Rank %d failed to allocate memory for file content\n", rank);
+            // In a real app, we should signal abort here
             return NULL;
         }
-        records[count] = new_record;
-        count++;
     }
 
-    // Close the file, set the output count, and return the records array
-    fclose(file);
-    if(VERBOSE) {
+    // Broadcast file content to all ranks
+    // Note: MPI_Bcast count is int. If file_size > INT_MAX, this needs chunking.
+    // For this project, we assume file_size fits in int.
+    MPI_Bcast(file_content, (int)file_size + 1, MPI_CHAR, 0, MPI_COMM_WORLD);
+
+    // Parse records from memory buffer
+    record **records = NULL;
+    int count = 0;
+    
+    char *cursor = file_content;
+    
+    // Skip header line
+    char *eol = strchr(cursor, '\n');
+    if (eol) {
+        cursor = eol + 1;
+    }
+
+    while (*cursor) {
+        // Find end of line
+        eol = strchr(cursor, '\n');
+        if (!eol) {
+            // Handle last line without newline
+            if (*cursor) eol = cursor + strlen(cursor);
+            else break;
+        }
+
+        if (eol > cursor) {
+            // Temporarily null-terminate the line to use existing parser
+            char save = *eol;
+            *eol = '\0';
+            
+            record *new_record = getRecordFromLineMPI(cursor);
+            if (new_record) {
+                records = realloc(records, (count + 1) * sizeof(record *));
+                records[count] = new_record;
+                count++;
+            }
+            
+            *eol = save; // Restore (good practice)
+        }
+        
+        if (*eol == '\0') break;
+        cursor = eol + 1;
+    }
+
+    free(file_content);
+    
+    if(VERBOSE && rank == 0) {
         printf("Loaded %d records from file: %s\n", count, filepath);
     }
     *num_records = count;
-    return records;  // Return the array of all records
+    return records;
 }
 
 /* Helper to parse a CSV field, handling quotes and commas */

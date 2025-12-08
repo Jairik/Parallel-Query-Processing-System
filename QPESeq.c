@@ -86,12 +86,12 @@ int main(int argc, char *argv[]) {
 
     // Print total runtime statistics in pretty colors
     double totalTimeTaken = ((double)clock() - totalStart) / CLOCKS_PER_SEC;
-    printf(CYAN "======= Execution Summary =======" RESET "\n");
+    printf(CYAN "======= Serial Execution Summary =======" RESET "\n");
     printf(CYAN "Engine Initialization Time: " RESET YELLOW "%.4f seconds\n" RESET, initTimeTaken);
     printf(CYAN "Query Loading Time: " RESET YELLOW "%.4f seconds\n" RESET, loadTimeTaken - initTimeTaken);
     printf(CYAN "Query Execution Time: " RESET YELLOW "%.4f seconds\n" RESET, totalTimeTaken - loadTimeTaken);
     printf(BOLD CYAN "Total Execution Time: " RESET BOLD YELLOW "%.4f seconds" RESET "\n", totalTimeTaken);
-    printf(CYAN "=================================" RESET "\n");
+    printf(CYAN "========================================" RESET "\n");
 
     return EXIT_SUCCESS;
 }

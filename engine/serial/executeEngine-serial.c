@@ -746,6 +746,7 @@ struct engineS *initializeEngineSerial(
     engine->attribute_types = (FieldType *)malloc(num_indexes * sizeof(FieldType));
     engine->all_records = NULL; // Initialize to NULL, will be set later
     engine->num_records = 0; // Initialize record count to 0
+    engine->record_block = NULL; // Initialize to NULL
     if (engine->bplus_tree_roots == NULL || engine->indexed_attributes == NULL || engine->attribute_types == NULL) {
         perror("Failed to allocate memory for engine components");
         free(engine);

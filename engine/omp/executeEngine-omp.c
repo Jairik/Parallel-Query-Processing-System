@@ -870,15 +870,25 @@ struct engineS *initializeEngineOMP(
     // Read all records from the database into memory and store in engine->all_records
     if(!datafile){ datafile = "../data/commands_50k.csv"; }; // Filepath default
     engine->datafile = strdup(datafile);
-    engine->all_records = getAllRecordsFromFileOMP(datafile, &engine->num_records);  // Directly update record count
+    engine->all_records = getAllRecordsFromFileOMP(datafile, &engine->num_records, &engine->record_block);  // Directly update record count
 
     // Copy indexed attribute names and types into engine struct (defaults)
+    engine->num_indexes = num_indexes; // Set total count upfront
+    
+    #pragma omp parallel for
     for (int i = 0; i < num_indexes; i++) {
-        // Build B+ tree index for each indexed attribute
-        bool success = makeIndexOMP(engine, indexed_attributes[i], attribute_types[i]);
-        if (!success) {
+        // Build B+ tree index for each indexed attribute in parallel
+        // We inline the logic of makeIndexOMP to allow parallel execution without race conditions on num_indexes
+        
+        node *root = loadIntoBplusTreeOMP(engine->all_records, engine->num_records, indexed_attributes[i]);
+        
+        if (root == NULL) {
             fprintf(stderr, "Failed to create index for attribute: %s\n", indexed_attributes[i]);
         }
+        
+        engine->bplus_tree_roots[i] = root;
+        engine->indexed_attributes[i] = strdup(indexed_attributes[i]);
+        engine->attribute_types[i] = mapAttributeTypeOMP(attribute_types[i]);
     }
 
     return engine;  // Return the initialized engine
@@ -909,10 +919,17 @@ void destroyEngineOMP(struct engineS *engine) {
         if (engine->attribute_types != NULL) free(engine->attribute_types);
 
         /* Free: all records allocated from file */
-        if (engine->all_records != NULL) {
+        if (engine->record_block != NULL) {
+            // If block allocation was used, free the block
+            free(engine->record_block);
+        } else if (engine->all_records != NULL) {
+            // Fallback: free individual records if block is not set
             for (int i = 0; i < engine->num_records; i++) {
                 if (engine->all_records[i] != NULL) free(engine->all_records[i]);
             }
+        }
+        
+        if (engine->all_records != NULL) {
             free(engine->all_records);
         }
 

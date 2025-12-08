@@ -29,7 +29,7 @@
  */
 bool makeIndexOMP(struct engineS *engine, const char *indexName, int attributeType);
 
-record **getAllRecordsFromFileOMP(const char *filepath, int *num_records);
+record **getAllRecordsFromFileOMP(const char *filepath, int *num_records, void **record_block_out);
 node *loadIntoBplusTreeOMP(record **records, int num_records, const char *attributeName);
 record *getRecordFromLineOMP(char *line);
 FieldType mapAttributeTypeOMP(int attributeType);

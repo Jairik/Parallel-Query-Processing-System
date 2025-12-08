@@ -128,11 +128,10 @@ def run_benchmark():
     
     if cores:
         count = 0
-        # Divide cores by 2 to account for threading stuff - quick fix
         if cores == "ALL":
-            count = os.cpu_count()/2 or 4
+            count = os.cpu_count() or 4
         else:
-            count = int(cores)/2
+            count = int(cores)
             
         omp_prefix = f"OMP_NUM_THREADS={count} "
         mpi_prefix = f"mpirun -np {count} "

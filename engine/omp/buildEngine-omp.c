@@ -7,6 +7,10 @@
 #include <omp.h>
 #define VERBOSE 0  // Essentially testing mode
 
+// Forward declarations
+void fillRecordFromLineOMP(char *line, record *new_record);
+void parseCSVFieldToBuffer(char **cursor, char *buffer, size_t max_len);
+
 // Forward declaration
 FieldType mapAttributeTypeOMP(int attributeType);
 
@@ -45,7 +49,7 @@ node *loadIntoBplusTreeOMP(record **records, int num_records, const char *attrib
     
     // Parallelize the iteration and insertion into the B+ tree
     // Use critical section to protect tree modifications
-    #pragma omp parallel for schedule(dynamic)
+    //#pragma omp parallel for schedule(dynamic)
     for (int i = 0; i < num_records; i++) {
         
         // Extract the current record as a key (can be done in parallel)
@@ -54,14 +58,14 @@ node *loadIntoBplusTreeOMP(record **records, int num_records, const char *attrib
 
         // Insert the record into the B+ tree using the key
         // Critical section needed as tree structure is modified
-        #pragma omp critical
-        {
+        //#pragma omp critical
+        //{
             root = insert(root, key, (ROW_PTR)currentRecord);
-        }
+        //}
 
         // Validate insertion via printing (only in verbose mode)
         if (VERBOSE) {
-            #pragma omp critical
+            //#pragma omp critical
             {
                 printTree(root);
             }
@@ -77,7 +81,7 @@ node *loadIntoBplusTreeOMP(record **records, int num_records, const char *attrib
  * Returns:
  *   Array of all record structs in the file
 */
-record **getAllRecordsFromFileOMP(const char *filepath, int *num_records) {
+record **getAllRecordsFromFileOMP(const char *filepath, int *num_records, void **record_block_out) {
     // Attempt to open the file from the provided path
     FILE *file = fopen(filepath, "r");
     if (file == NULL) {
@@ -85,45 +89,111 @@ record **getAllRecordsFromFileOMP(const char *filepath, int *num_records) {
         return NULL;
     }
 
-    // Initialize the records and count
-    record **records = NULL;
-    char line[1024];
-    int count = 0;
+    fseek(file, 0, SEEK_END);
+    long filesize = ftell(file);
+    fseek(file, 0, SEEK_SET);
 
-    // Read each line and populate the records array
-    bool first_line = true;
-    while (fgets(line, sizeof(line), file)) {
-        if (first_line) {
-            first_line = false;
-            continue; // Skip header
-        }
-        record *new_record = getRecordFromLineOMP(line);
-        records = realloc(records, (count + 1) * sizeof(record *));
-        if (records == NULL) {
-            fprintf(stderr, "Memory allocation failed\n");
-            fclose(file);
-            return NULL;
-        }
-        records[count] = new_record;
-        count++;
+    if (filesize == 0) {
+        fclose(file);
+        *num_records = 0;
+        return NULL;
     }
 
-    // Close the file, set the output count, and return the records array
+    char *content = malloc(filesize + 1);
+    if (!content) {
+        fclose(file);
+        return NULL;
+    }
+    
+    size_t read_size = fread(content, 1, filesize, file);
+    content[filesize] = '\0';
     fclose(file);
+
+    // Count lines to pre-allocate arrays
+    int line_count = 0;
+    for (long i = 0; i < filesize; i++) {
+        if (content[i] == '\n') line_count++;
+    }
+    if (filesize > 0 && content[filesize-1] != '\n') line_count++;
+
+    if (line_count == 0) {
+        free(content);
+        *num_records = 0;
+        return NULL;
+    }
+
+    // Create line pointers
+    char **lines = malloc(line_count * sizeof(char*));
+    int idx = 0;
+    lines[idx++] = content;
+    for (long i = 0; i < filesize; i++) {
+        if (content[i] == '\n') {
+            content[i] = '\0';
+            if (idx < line_count && i + 1 < filesize) {
+                lines[idx++] = &content[i+1];
+            }
+        }
+    }
+
+    // Allocate records array (max possible size)
+    record **records = malloc(idx * sizeof(record*));
+    
+    // Allocate a single block for all records to reduce malloc overhead and fragmentation
+    // We allocate idx records, though 0 is unused (header)
+    record *record_block = calloc(idx, sizeof(record));
+    if (!record_block) {
+        free(records);
+        free(lines);
+        free(content);
+        return NULL;
+    }
+
+    if (record_block_out) {
+        *record_block_out = record_block;
+    }
+
+    // Parallel parse
+    // Skip header (index 0)
+    #pragma omp parallel for schedule(dynamic)
+    for (int i = 1; i < idx; i++) {
+        if (lines[i] && *lines[i] != '\0') {
+            records[i] = &record_block[i];
+            fillRecordFromLineOMP(lines[i], records[i]);
+        } else {
+            records[i] = NULL;
+        }
+    }
+
+    // Compact the array (remove NULLs and header slot)
+    int count = 0;
+    for (int i = 1; i < idx; i++) {
+        if (records[i] != NULL) {
+            records[count++] = records[i];
+        }
+    }
+    
+    free(lines);
+    // content cannot be freed because we might have pointers into it?
+    // fillRecordFromLineOMP copies data into fixed size arrays in record struct.
+    // So we can free content.
+    free(content);
+
     if(VERBOSE) {
         printf("Loaded %d records from file: %s\n", count, filepath);
     }
     *num_records = count;
-    return records;  // Return the array of all records
+    return records;
 }
 
 /* Helper to parse a CSV field, handling quotes and commas */
-char *parseCSVField(char **cursor) {
+void parseCSVFieldToBuffer(char **cursor, char *buffer, size_t max_len) {
     char *start = *cursor;
-    if (*start == '\0' || *start == '\n' || *start == '\r') return NULL;
+    if (*start == '\0' || *start == '\n' || *start == '\r') {
+        buffer[0] = '\0';
+        return;
+    }
 
-    char *field = malloc(1024); // Allocate buffer for field
-    int i = 0;
+    size_t i = 0;
     bool in_quotes = false;
 
     if (*start == '"') {
@@ -131,12 +201,12 @@ char *parseCSVField(char **cursor) {
         start++; // Skip opening quote
     }
 
-    while (*start != '\0' && *start != '\n' && *start != '\r') {
+    while (*start != '\0' && *start != '\n' && *start != '\r' && i < max_len - 1) {
         if (in_quotes) {
             if (*start == '"') {
                 if (*(start + 1) == '"') {
                     // Escaped quote
-                    field[i++] = '"';
+                    buffer[i++] = '"';
                     start += 2;
                 } else {
                     // End of quoted field
@@ -144,20 +214,73 @@ char *parseCSVField(char **cursor) {
                     start++;
                 }
             } else {
-                field[i++] = *start++;
+                buffer[i++] = *start++;
             }
         } else {
             if (*start == ',') {
                 start++; // Skip comma
                 break;
             }
-            field[i++] = *start++;
+            buffer[i++] = *start++;
         }
     }
     
-    field[i] = '\0';
+    buffer[i] = '\0';
     *cursor = start;
-    return field;
+}
+
+/* Fill a record struct from a line of CSV data */
+void fillRecordFromLineOMP(char *line, record *new_record) {
+    char *cursor = line;
+    char buffer[1024];
+
+    // command_id
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    new_record->command_id = strtoull(buffer, NULL, 10);
+
+    // raw_command
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->raw_command, buffer, sizeof(new_record->raw_command));
+
+    // base_command
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->base_command, buffer, sizeof(new_record->base_command));
+
+    // shell_type
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->shell_type, buffer, sizeof(new_record->shell_type));
+
+    // exit_code
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    new_record->exit_code = atoi(buffer);
+
+    // timestamp
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->timestamp, buffer, sizeof(new_record->timestamp));
+
+    // sudo_used
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    new_record->sudo_used = (strcasecmp(buffer, "true") == 0 || strcmp(buffer, "1") == 0);
+
+    // working_directory
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->working_directory, buffer, sizeof(new_record->working_directory));
+
+    // user_id
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    new_record->user_id = atoi(buffer);
+
+    // user_name
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->user_name, buffer, sizeof(new_record->user_name));
+
+    // host_name
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    strncpy(new_record->host_name, buffer, sizeof(new_record->host_name));
+
+    // risk_level
+    parseCSVFieldToBuffer(&cursor, buffer, sizeof(buffer));
+    new_record->risk_level = atoi(buffer);
 }
 
 /* Get a record struct from a line of CSV data
@@ -172,61 +295,7 @@ record *getRecordFromLineOMP(char *line){
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
-
-    char *cursor = line;
-    char *token;
-
-    // command_id
-    token = parseCSVField(&cursor);
-    if (token) { new_record->command_id = strtoull(token, NULL, 10); free(token); }
-
-    // raw_command
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->raw_command, token, sizeof(new_record->raw_command)); free(token); }
-
-    // base_command
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->base_command, token, sizeof(new_record->base_command)); free(token); }
-
-    // shell_type
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->shell_type, token, sizeof(new_record->shell_type)); free(token); }
-
-    // exit_code
-    token = parseCSVField(&cursor);
-    if (token) { new_record->exit_code = atoi(token); free(token); }
-
-    // timestamp
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->timestamp, token, sizeof(new_record->timestamp)); free(token); }
-
-    // sudo_used
-    token = parseCSVField(&cursor);
-    if (token) { 
-        new_record->sudo_used = (strcasecmp(token, "true") == 0 || strcmp(token, "1") == 0); 
-        free(token); 
-    }
-
-    // working_directory
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->working_directory, token, sizeof(new_record->working_directory)); free(token); }
-
-    // user_id
-    token = parseCSVField(&cursor);
-    if (token) { new_record->user_id = atoi(token); free(token); }
-
-    // user_name
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->user_name, token, sizeof(new_record->user_name)); free(token); }
-
-    // host_name
-    token = parseCSVField(&cursor);
-    if (token) { strncpy(new_record->host_name, token, sizeof(new_record->host_name)); free(token); }
-
-    // risk_level
-    token = parseCSVField(&cursor);
-    if (token) { new_record->risk_level = atoi(token); free(token); }
-
+    fillRecordFromLineOMP(line, new_record);
     return new_record;  // Return the fully populated record
 }
 
