@@ -215,9 +215,6 @@ int main(int argc, char *argv[]) {
 
     // Execute Queries - Distribute across MPI ranks
     for (int i = 0; i < query_count; i++) {
-        // Round-robin distribution: each rank processes queries where i % size == rank
-        if (i % size != rank) continue;
-        
         char *query = trim(queries[i]);
         if (!*query) continue;
         
@@ -234,6 +231,15 @@ int main(int argc, char *argv[]) {
 
         if (num_tokens > 0) {
             parsed = parse_tokens(tokens);
+        } else {
+            parseFailed = true;
+        }
+
+        bool is_owner = (i % size == rank);
+        bool is_collective = (parsed.command == CMD_INSERT || parsed.command == CMD_DELETE);
+        bool should_execute = is_owner || is_collective;
+
+        if (should_execute && num_tokens > 0) {
             
             // Prepare Select Items
             const char *selectItems[parsed.num_columns > 0 ? parsed.num_columns : 1];
@@ -278,8 +284,6 @@ int main(int argc, char *argv[]) {
             }
             
             execTime = MPI_Wtime() - start;
-        } else {
-            parseFailed = true;
         }
 
         // Synchronize all ranks before printing to ensure ordered output
@@ -287,7 +291,7 @@ int main(int argc, char *argv[]) {
         
         // Print results in rank order
         for (int print_rank = 0; print_rank < size; print_rank++) {
-            if (rank == print_rank) {
+            if (rank == print_rank && is_owner) {
                 printf("Executing Query: %s\n", query);
             
             if (parseFailed) {
@@ -335,11 +339,11 @@ int main(int argc, char *argv[]) {
         printf(CYAN "=================================" RESET "\n");
     }
 
-    printf("Rank %d: Freeing buffer...\n", rank);
+    // printf("Rank %d: Freeing buffer...\n", rank);
     free(buffer);
-    printf("Rank %d: Destroying engine...\n", rank);
+    // printf("Rank %d: Destroying engine...\n", rank);
     destroyEngineMPI(engine);
-    printf("Rank %d: Finalizing MPI...\n", rank);
+    // printf("Rank %d: Finalizing MPI...\n", rank);
 
     MPI_Finalize();
     return EXIT_SUCCESS;

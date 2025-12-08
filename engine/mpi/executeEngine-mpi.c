@@ -361,6 +361,12 @@ struct resultSetS *executeQuerySelectMPI(
     // Get all indexed attributes in the WHERE clause, using the B+ tree indexes where possible
     struct whereClauseS *wc = whereClause;
     while (wc != NULL) {
+        // Skip nested conditions for index optimization (attribute is NULL)
+        if (wc->attribute == NULL) {
+            wc = wc->next;
+            continue;
+        }
+
         for (int i = 0; i < engine->num_indexes; i++) {
             if (strcmp(wc->attribute, engine->indexed_attributes[i]) == 0) {
                 // Use B+ tree index for this attribute

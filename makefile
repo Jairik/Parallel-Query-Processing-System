@@ -9,7 +9,7 @@
 
 CC       := gcc
 CSTD     := -std=c11
-CFLAGS   := $(CSTD) -Wall -Wextra -O2 -g -Iinclude
+CFLAGS   := $(CSTD) -Wall -Wextra -O2 -g -Iinclude -Wno-unused-variable  # Supress unused variable warnings
 LDFLAGS  :=
 LDLIBS   :=
 
