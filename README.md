@@ -68,6 +68,7 @@ Once testing is complete, the `make clean` command can be run to clean all artif
 
 ## File Structure
 
+```text
 project-root/
 ├── build/                      # Compiled binaries and test executables
 ├── data-generation/            # Scripts for generating synthetic datasets
@@ -87,6 +88,7 @@ project-root/
 ├── QPESeq.c                    # Main entry for serial execution engine
 ├── requirements.sh             # Environment + dependency setup script
 └── sample-queries.txt          # Example queries for debugging + validation
+```
 
 ---
 
