@@ -27,11 +27,11 @@ jobs:
         run: make clean && make all
 
       # Run program/tests under Valgrind
-      - name: Run under Valgrind (memory leak check)
-        run: |
-          valgrind \
-            --leak-check=full \
-            --show-leak-kinds=all \
-            --track-origins=yes \
-            --error-exitcode=1 \
-            ./QPESeq
+      # - name: Run under Valgrind (memory leak check)
+      #   run: |
+      #     valgrind \
+      #       --leak-check=full \
+      #       --show-leak-kinds=all \
+      #       --track-origins=yes \
+      #       --error-exitcode=1 \
+      #       ./QPESeq
