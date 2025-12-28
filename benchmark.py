@@ -4,6 +4,15 @@ import sys
 import os
 import time
 
+def resource_path(relative_path):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+QPESeq = resource_path("QPESeq")
+QPEOMP = resource_path("QPEOMP")
+QPEMPI = resource_path("QPEMPI")
+
 def run_command(command, silent=False, dataset=None):
     """Runs a shell command."""
     try:
@@ -48,12 +57,12 @@ def select_option(stdscr, title, options):
             return options[selected_row_idx]
 
 def get_datasets():
-    data_dir = "data-generation"
+    data_dir = resource_path("data-generation")
     if not os.path.exists(data_dir):
         return []
     files = [f for f in os.listdir(data_dir) if f.endswith(".csv")]
     files.sort()
-    # Return relative paths
+    # Return absolute paths
     return [os.path.join(data_dir, f) for f in files]
 
 def main(stdscr):
@@ -140,23 +149,23 @@ def run_benchmark():
     start_time = time.time() 
     
     if selection == "Serial":
-        run_command(f"./QPESeq {dataset}")
+        run_command(f"{QPESeq} {dataset}")
     
     elif selection == "OMP":
-        run_command(f"{omp_prefix}./QPEOMP {dataset}")
+        run_command(f"{omp_prefix}{QPEOMP} {dataset}")
     
     elif selection == "MPI":
-        run_command(f"{mpi_prefix}./QPEMPI {dataset}")
+        run_command(f"{mpi_prefix}{QPEMPI} {dataset}")
     
     elif selection == "ALL":
         print("--- Running Serial ---")
-        run_command(f"./QPESeq {dataset}")
+        run_command(f"{QPESeq} {dataset}")
         
         print("\n--- Running OMP ---")
-        run_command(f"{omp_prefix}./QPEOMP {dataset}")
+        run_command(f"{omp_prefix}{QPEOMP} {dataset}")
         
         print("\n--- Running MPI ---")
-        run_command(f"{mpi_prefix}./QPEMPI {dataset}")
+        run_command(f"{mpi_prefix}{QPEMPI} {dataset}")
 
     end_time = time.time()
     print("\n" + "="*60)
