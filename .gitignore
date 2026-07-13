@@ -14,3 +14,9 @@ QPEOMP
 /.vscode
 /.vscode
 /build
+
+# Locally generated datasets. The two below are the exceptions: they predate
+# this rule and are already tracked via LFS.
+commands_*.csv
+!/data-generation/commands_1m.csv
+!/data-generation/commands_50k.csv

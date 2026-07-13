@@ -64,6 +64,34 @@ make run-mpi
 
 Once testing is complete, the `make clean` command can be run to clean all artifacts and object files.
 
+### Web Frontend
+
+A Streamlit web UI wraps all of the above — interactive query running on any
+engine, live strong-scaling benchmarks with speedup/efficiency/Amdahl charts,
+and dataset generation/exploration:
+
+```bash
+frontend/run.sh
+```
+
+See `frontend/README.md` for details.
+
+**Query Runner** — run SELECT/INSERT/DELETE against any dataset on the serial, OpenMP, and MPI engines, then compare their runtime breakdowns and result sets side by side:
+
+![Query Runner](docs/demos/query-runner.png)
+
+![Query Runner engine comparison](docs/demos/query-runner-results.png)
+
+**Benchmark** — strong-scaling sweep over thread/process counts, with speedup, efficiency, and the Amdahl parallel fraction computed from live measurements:
+
+![Benchmark configuration](docs/demos/benchmark-setup.png)
+
+![Benchmark scaling results](docs/demos/benchmark-results.png)
+
+**Datasets** — generate synthetic command-log data and explore any dataset before querying it:
+
+![Datasets](docs/demos/datasets.png)
+
 ---
 
 ## File Structure
